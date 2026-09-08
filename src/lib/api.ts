@@ -44,7 +44,7 @@ async function request<T>(
     });
 
     const durationMs = Math.round(performance.now() - startTime);
-    const json = await res.json().catch(() => ({}));
+    const json: any = await res.json().catch(() => ({}));
 
     broadcastLog({
       id: Math.random().toString(36).substring(2, 9),

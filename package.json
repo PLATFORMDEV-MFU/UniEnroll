@@ -1,0 +1,39 @@
+{
+  "name": "unienroll",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UniEnroll - Full-Stack University Enrollment Platform",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "backend:dev": "wrangler dev",
+    "backend:deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "db:migrate:local": "wrangler d1 execute unienroll-db --local --file=./src/backend/db/schema.sql",
+    "db:seed:local": "wrangler d1 execute unienroll-db --local --file=./src/backend/db/seed.sql",
+    "db:migrate:remote": "wrangler d1 execute unienroll-d1 --remote --file=./src/backend/db/schema.sql",
+    "db:seed:remote": "wrangler d1 execute unienroll-d1 --remote --file=./src/backend/db/seed.sql"
+  },
+  "dependencies": {
+    "hono": "^4.7.4",
+    "lucide-react": "^1.33.0",
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260815.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.1",
+    "tailwindcss": "^4",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.124.0"
+  },
+  "packageManager": "pnpm@10.17.1"
+}
