@@ -2,14 +2,15 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
-import { Bindings } from './types';
+import { AppEnv } from './types';
+import { authRoutes } from './routes/auth';
 import { enrollmentRoutes } from './routes/enrollments';
 import { courseRoutes } from './routes/courses';
 import { sectionRoutes } from './routes/sections';
 import { studentRoutes } from './routes/students';
 import { seedRoutes } from './routes/seed';
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<AppEnv>();
 
 // Global Middlewares
 app.use('*', logger());
@@ -29,12 +30,16 @@ app.get('/', (c) => {
     version: '1.0.0',
     endpoints: {
       health: 'GET /health',
+      auth: {
+        login: 'POST /api/auth/login',
+        me: 'GET /api/auth/me'
+      },
       enrollments: {
-        create: 'POST /api/enrollments',
-        readAll: 'GET /api/enrollments',
-        readOne: 'GET /api/enrollments/:id',
-        update: 'PATCH /api/enrollments/:id',
-        delete: 'DELETE /api/enrollments/:id'
+        create: 'POST /api/enrollments (Authenticated)',
+        readAll: 'GET /api/enrollments (Authenticated)',
+        readOne: 'GET /api/enrollments/:id (Authenticated)',
+        update: 'PATCH /api/enrollments/:id (Authenticated)',
+        delete: 'DELETE /api/enrollments/:id (Authenticated)'
       },
       supporting_resources: {
         courses: 'GET /api/courses',
@@ -51,11 +56,12 @@ app.get('/health', (c) => {
 });
 
 // Mount Routes
-app.route('/api/enrollments', enrollmentRoutes);
+app.route('/api/auth', authRoutes);
 app.route('/api/courses', courseRoutes);
 app.route('/api/sections', sectionRoutes);
 app.route('/api/students', studentRoutes);
 app.route('/api/seed', seedRoutes);
+app.route('/api/enrollments', enrollmentRoutes);
 
 // Global 404 Handler
 app.notFound((c) => {

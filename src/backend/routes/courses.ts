@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { Bindings, Course } from '../types';
+import { AppEnv, Course } from '../types';
 
-export const courseRoutes = new Hono<{ Bindings: Bindings }>();
+export const courseRoutes = new Hono<AppEnv>();
 
 // GET /api/courses
 courseRoutes.get('/', async (c) => {

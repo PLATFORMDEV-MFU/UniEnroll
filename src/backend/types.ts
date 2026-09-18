@@ -1,5 +1,22 @@
 export type Bindings = {
   DB: D1Database;
+  JWT_SECRET?: string;
+};
+
+export type AuthPayload = {
+  sub: number;
+  student_code: string;
+  role: 'STUDENT' | 'STAFF';
+  exp?: number;
+};
+
+export type Variables = {
+  user: AuthPayload;
+};
+
+export type AppEnv = {
+  Bindings: Bindings;
+  Variables: Variables;
 };
 
 export interface Course {
@@ -34,6 +51,8 @@ export interface Student {
   full_name: string;
   email: string;
   major: string;
+  password_hash?: string;
+  role: 'STUDENT' | 'STAFF';
   created_at: string;
 }
 
@@ -56,7 +75,7 @@ export interface Enrollment {
 }
 
 export interface CreateEnrollmentDTO {
-  student_id: number;
+  student_id?: number;
   section_id: number;
 }
 

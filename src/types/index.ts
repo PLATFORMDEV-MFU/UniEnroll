@@ -29,7 +29,29 @@ export interface Student {
   full_name: string;
   email: string;
   major: string;
+  role?: 'STUDENT' | 'STAFF';
   created_at?: string;
+}
+
+export interface AuthUser {
+  id: number;
+  student_code: string;
+  full_name: string;
+  email: string;
+  major: string;
+  role: 'STUDENT' | 'STAFF';
+}
+
+export interface LoginRequest {
+  student_code: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  message?: string;
+  token: string;
+  user: AuthUser;
 }
 
 export interface Enrollment {

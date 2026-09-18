@@ -36,6 +36,11 @@ INSERT INTO students (id, student_code, full_name, email, major) VALUES
 (2, '65010088', 'Wipada Srisuk', 's65010088@university.ac.th', 'Computer Science'),
 (3, '66010123', 'Thanawat Jaiyen', 's66010123@university.ac.th', 'Information Technology'),
 (4, '66010199', 'Nattaporn Meedee', 's66010199@university.ac.th', 'Computer Science');
+INSERT INTO students (id, student_code, full_name, email, major, password_hash, role) VALUES
+(1, '65010042', 'Somchai Prasert', 's65010042@university.ac.th', 'Software Engineering', '', 'STUDENT'),
+(2, '65010088', 'Wipada Srisuk', 's65010088@university.ac.th', 'Computer Science', '', 'STUDENT'),
+(3, '66010123', 'Thanawat Jaiyen', 's66010123@university.ac.th', 'Information Technology', '', 'STUDENT'),
+(4, '66010199', 'Nattaporn Meedee', 's66010199@university.ac.th', 'Computer Science', '', 'STUDENT');
 
 -- 4. Initial Seed Enrollments
 -- Student 1 enrolled in CS101 SEC01

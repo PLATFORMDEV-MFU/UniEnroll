@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { Bindings, Section } from '../types';
+import { AppEnv, Section } from '../types';
 
-export const sectionRoutes = new Hono<{ Bindings: Bindings }>();
+export const sectionRoutes = new Hono<AppEnv>();
 
 // GET /api/sections (with availability calculation)
 sectionRoutes.get('/', async (c) => {

@@ -1,7 +1,51 @@
-import { Course, Section, Student, Enrollment, ApiLog } from '../types';
+import { Course, Section, Student, Enrollment, ApiLog, AuthUser, LoginResponse } from '../types';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'https://unienroll-backend.team03-enrollment.workers.dev';
+
+export const TOKEN_STORAGE_KEY = 'unienroll_auth_token';
+export const USER_STORAGE_KEY = 'unienroll_auth_user';
+
+export function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+export function setStoredToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (token) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
+}
+
+export function getStoredUser(): AuthUser | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(USER_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user: AuthUser | null): void {
+  if (typeof window === 'undefined') return;
+  if (user) {
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(USER_STORAGE_KEY);
+  }
+}
+
+type UnauthorizedCallback = () => void;
+let unauthorizedListener: UnauthorizedCallback | null = null;
+
+export function setUnauthorizedListener(cb: UnauthorizedCallback | null) {
+  unauthorizedListener = cb;
+}
 
 type LogCallback = (log: ApiLog) => void;
 const logListeners: Set<LogCallback> = new Set();
@@ -34,13 +78,21 @@ async function request<T>(
     }
   }
 
+  // Inject Authorization Bearer token if available
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+
+  const token = getStoredToken();
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   try {
     const res = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     });
 
     const durationMs = Math.round(performance.now() - startTime);
@@ -57,6 +109,11 @@ async function request<T>(
       response: json,
       error: !res.ok ? json.error || `HTTP ${res.status}` : undefined,
     });
+
+    // Notify listeners if 401 Unauthorized (e.g. token expired)
+    if (res.status === 401 && endpoint !== '/api/auth/login') {
+      unauthorizedListener?.();
+    }
 
     return {
       ...json,
@@ -87,6 +144,20 @@ async function request<T>(
 }
 
 export const api = {
+  // Auth API
+  async login(studentCode: string, password: string): Promise<LoginResponse & { status: number; error?: string }> {
+    const res = await request<AuthUser>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ student_code: studentCode, password }),
+    });
+    return res as any;
+  },
+
+  async getMe() {
+    return request<AuthUser>('/api/auth/me');
+  },
+
+  // Resources
   async getHealth() {
     return request<{ status: string; timestamp: string }>('/health');
   },
@@ -117,10 +188,13 @@ export const api = {
     return request<Enrollment[]>(`/api/enrollments${query}`);
   },
 
-  async createEnrollment(studentId: number, sectionId: number) {
+  async createEnrollment(sectionId: number, studentId?: number) {
+    const body: Record<string, any> = { section_id: sectionId };
+    if (studentId) body.student_id = studentId;
+
     return request<Enrollment>('/api/enrollments', {
       method: 'POST',
-      body: JSON.stringify({ student_id: studentId, section_id: sectionId }),
+      body: JSON.stringify(body),
     });
   },
 

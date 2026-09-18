@@ -1,13 +1,12 @@
 'use client';
 
 import React from 'react';
-import { Student } from '../types';
-import { GraduationCap, User, RotateCcw, BookOpen, Calendar, Terminal } from 'lucide-react';
+import { AuthUser } from '../types';
+import { GraduationCap, RotateCcw, BookOpen, Calendar, Terminal, LogOut } from 'lucide-react';
 
 interface NavbarProps {
-  students: Student[];
-  selectedStudent: Student | null;
-  onSelectStudent: (student: Student) => void;
+  currentUser: AuthUser | null;
+  onLogout: () => void;
   activeTab: 'catalog' | 'my_enrollments' | 'api_logs';
   onTabChange: (tab: 'catalog' | 'my_enrollments' | 'api_logs') => void;
   enrolledCount: number;
@@ -17,9 +16,8 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  students,
-  selectedStudent,
-  onSelectStudent,
+  currentUser,
+  onLogout,
   activeTab,
   onTabChange,
   enrolledCount,
@@ -90,7 +88,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </nav>
 
-          {/* Controls: Student Switcher + Status + Seed DB */}
+          {/* Controls: User Profile + Status + Seed DB + Logout */}
           <div className="flex items-center gap-2.5">
             {/* Status Dot */}
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-600 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
@@ -98,25 +96,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-[11px] font-medium text-slate-600">Online</span>
             </div>
 
-            {/* Active Student Switcher */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
-              <User className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-              <select
-                aria-label="Select active student"
-                value={selectedStudent?.id || ''}
-                onChange={(e) => {
-                  const student = students.find((s) => s.id === Number(e.target.value));
-                  if (student) onSelectStudent(student);
-                }}
-                className="bg-transparent text-xs text-slate-800 font-medium focus:outline-none cursor-pointer pr-1"
-              >
-                {students.map((st) => (
-                  <option key={st.id} value={st.id} className="bg-white text-slate-800">
-                    {st.student_code} - {st.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Authenticated Student Info */}
+            {currentUser && (
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                <div className="w-5 h-5 rounded-md bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
+                  {currentUser.student_code.slice(-2)}
+                </div>
+                <div className="hidden sm:block text-left">
+                  <p className="text-xs font-semibold text-slate-800 leading-tight truncate max-w-[120px]">
+                    {currentUser.full_name}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-mono leading-none">
+                    {currentUser.student_code}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Reset / Seed Database Button */}
             <button
@@ -126,7 +121,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm transition-colors disabled:opacity-50"
             >
               <RotateCcw className={`w-3.5 h-3.5 ${isSeeding ? 'animate-spin text-slate-600' : 'text-slate-500'}`} />
-              <span className="hidden sm:inline">{isSeeding ? 'Resetting...' : 'Reset Data'}</span>
+              <span className="hidden sm:inline">{isSeeding ? 'Resetting...' : 'Reset'}</span>
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={onLogout}
+              title="Sign Out"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-rose-600 hover:bg-rose-50 border border-rose-200 shadow-xs transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </div>

@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
-import { Bindings, Student } from '../types';
+import { AppEnv, Student } from '../types';
 
-export const studentRoutes = new Hono<{ Bindings: Bindings }>();
+export const studentRoutes = new Hono<AppEnv>();
 
-// GET /api/students
+// GET /api/students - List students (public profile info only, excluding password_hash)
 studentRoutes.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM students ORDER BY student_code ASC'
-  ).all<Student>();
+    'SELECT id, student_code, full_name, email, major, role, created_at FROM students ORDER BY student_code ASC'
+  ).all<Omit<Student, 'password_hash'>>();
 
   return c.json({
     success: true,
@@ -16,7 +16,7 @@ studentRoutes.get('/', async (c) => {
   });
 });
 
-// GET /api/students/:id
+// GET /api/students/:id - Get student by ID
 studentRoutes.get('/:id', async (c) => {
   const id = Number(c.req.param('id'));
   if (isNaN(id)) {
@@ -24,8 +24,8 @@ studentRoutes.get('/:id', async (c) => {
   }
 
   const student = await c.env.DB.prepare(
-    'SELECT * FROM students WHERE id = ?'
-  ).bind(id).first<Student>();
+    'SELECT id, student_code, full_name, email, major, role, created_at FROM students WHERE id = ?'
+  ).bind(id).first<Omit<Student, 'password_hash'>>();
 
   if (!student) {
     return c.json({ success: false, error: `Student with ID ${id} not found` }, 404);

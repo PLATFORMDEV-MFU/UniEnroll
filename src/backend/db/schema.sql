@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS students (
     full_name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     major TEXT NOT NULL DEFAULT 'Software Engineering',
+    password_hash TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'STUDENT' CHECK (role IN ('STUDENT', 'STAFF')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

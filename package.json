@@ -11,8 +11,8 @@
     "backend:dev": "wrangler dev",
     "backend:deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
-    "db:migrate:local": "wrangler d1 execute unienroll-db --local --file=./src/backend/db/schema.sql",
-    "db:seed:local": "wrangler d1 execute unienroll-db --local --file=./src/backend/db/seed.sql",
+    "db:migrate:local": "wrangler d1 execute unienroll-d1 --local --file=./src/backend/db/schema.sql",
+    "db:seed:local": "wrangler d1 execute unienroll-d1 --local --file=./src/backend/db/seed.sql",
     "db:migrate:remote": "wrangler d1 execute unienroll-d1 --remote --file=./src/backend/db/schema.sql",
     "db:seed:remote": "wrangler d1 execute unienroll-d1 --remote --file=./src/backend/db/seed.sql"
   },

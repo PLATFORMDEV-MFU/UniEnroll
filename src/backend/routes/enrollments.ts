@@ -1,11 +1,19 @@
 import { Hono } from 'hono';
-import { Bindings, Enrollment, Section, Student, CreateEnrollmentDTO, UpdateEnrollmentDTO } from '../types';
+import { AppEnv, Enrollment, Section, Student, CreateEnrollmentDTO, UpdateEnrollmentDTO } from '../types';
+import { authMiddleware } from '../middleware/auth';
 
-export const enrollmentRoutes = new Hono<{ Bindings: Bindings }>();
+export const enrollmentRoutes = new Hono<AppEnv>();
+
+// Enforce JWT authentication for all enrollment routes
+enrollmentRoutes.use('*', authMiddleware);
 
 // 1. GET /api/enrollments (Read All with optional filters)
 enrollmentRoutes.get('/', async (c) => {
-  const studentId = c.req.query('student_id');
+  const user = c.get('user');
+  let studentId = c.req.query('student_id');
+  if (user && user.role === 'STUDENT') {
+    studentId = String(user.sub);
+  }
   const sectionId = c.req.query('section_id');
   const status = c.req.query('status');
 
@@ -97,6 +105,11 @@ enrollmentRoutes.get('/:id', async (c) => {
     return c.json({ success: false, error: `Enrollment with ID ${id} not found` }, 404);
   }
 
+  const user = c.get('user');
+  if (user && user.role !== 'STAFF' && enrollment.student_id !== user.sub) {
+    return c.json({ success: false, error: 'Forbidden: You can only view your own enrollment details' }, 403);
+  }
+
   return c.json({
     success: true,
     data: enrollment
@@ -112,12 +125,14 @@ enrollmentRoutes.post('/', async (c) => {
     return c.json({ success: false, error: 'Invalid JSON request body' }, 400);
   }
 
-  const { student_id, section_id } = body;
+  const user = c.get('user');
+  const student_id = user ? user.sub : body.student_id;
+  const section_id = body.section_id;
 
   if (!student_id || !section_id) {
     return c.json({
       success: false,
-      error: 'Missing required fields: student_id and section_id are required'
+      error: 'Missing required fields: section_id is required'
     }, 400);
   }
 
@@ -178,7 +193,7 @@ enrollmentRoutes.post('/', async (c) => {
 
   // Atomic Execution: Invariant Protection via DB-level CHECK (enrolled_count <= max_capacity)
   const now = new Date().toISOString();
-  
+
   const updateSectionStmt = c.env.DB.prepare(`
     UPDATE sections 
     SET enrolled_count = enrolled_count + 1 
@@ -270,6 +285,11 @@ enrollmentRoutes.patch('/:id', async (c) => {
 
   if (!existing) {
     return c.json({ success: false, error: `Enrollment with ID ${id} not found` }, 404);
+  }
+
+  const user = c.get('user');
+  if (user && user.role !== 'STAFF' && existing.student_id !== user.sub) {
+    return c.json({ success: false, error: 'Forbidden: You can only modify your own enrollments' }, 403);
   }
 
   const now = new Date().toISOString();
@@ -391,6 +411,11 @@ enrollmentRoutes.delete('/:id', async (c) => {
 
   if (!existing) {
     return c.json({ success: false, error: `Enrollment with ID ${id} not found` }, 404);
+  }
+
+  const user = c.get('user');
+  if (user && user.role !== 'STAFF' && existing.student_id !== user.sub) {
+    return c.json({ success: false, error: 'Forbidden: You can only drop your own enrollments' }, 403);
   }
 
   const now = new Date().toISOString();
