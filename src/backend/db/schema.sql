@@ -46,11 +46,45 @@ CREATE TABLE IF NOT EXISTS enrollments (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 5. Idempotency Keys Table (A5 Box 5: Idempotency Protection)
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    key TEXT PRIMARY KEY,
+    request_path TEXT NOT NULL,
+    response_status INTEGER NOT NULL,
+    response_body TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. Webhook Logs Table (A5 Box 3 & Box 4: Webhook Receiver & Sender Audits)
+CREATE TABLE IF NOT EXISTS webhook_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    direction TEXT NOT NULL CHECK (direction IN ('INCOMING', 'OUTGOING')),
+    event TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    signature TEXT,
+    status TEXT NOT NULL CHECK (status IN ('VERIFIED', 'FAILED', 'DELIVERED', 'FAILED_DELIVERY')),
+    response_status INTEGER,
+    response_body TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. Partner Request Logs Table (A5 Box 2: Provider Proof)
+CREATE TABLE IF NOT EXISTS partner_request_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    partner_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    method TEXT NOT NULL,
+    status_code INTEGER NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_sections_course ON sections(course_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_student ON enrollments(student_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_section ON enrollments(section_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_status ON enrollments(status);
+CREATE INDEX IF NOT EXISTS idx_webhook_direction ON webhook_logs(direction);
+CREATE INDEX IF NOT EXISTS idx_partner_logs_partner ON partner_request_logs(partner_id);
 
 -- Database-Level Constraint: Prevent duplicate active enrollments (Partial Unique Index)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_enrollment 

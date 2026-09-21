@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { AppEnv, Enrollment, Section, Student, CreateEnrollmentDTO, UpdateEnrollmentDTO } from '../types';
 import { authMiddleware } from '../middleware/auth';
+import { idempotencyMiddleware } from '../middleware/idempotency';
+import { dispatchWebhook } from '../lib/webhook-sender';
 
 export const enrollmentRoutes = new Hono<AppEnv>();
 
@@ -116,8 +118,8 @@ enrollmentRoutes.get('/:id', async (c) => {
   });
 });
 
-// 3. POST /api/enrollments (Create Enrollment with Business Rules Validation)
-enrollmentRoutes.post('/', async (c) => {
+// 3. POST /api/enrollments (Create Enrollment with Business Rules Validation & Idempotency)
+enrollmentRoutes.post('/', idempotencyMiddleware, async (c) => {
   let body: CreateEnrollmentDTO;
   try {
     body = await c.req.json();
@@ -256,6 +258,22 @@ enrollmentRoutes.post('/', async (c) => {
     JOIN courses c ON s.course_id = c.id
     WHERE e.id = ?
   `).bind(newEnrollmentId).first<Enrollment>();
+
+  // Dispatch outgoing webhook to Partner (A5 Box 4: Webhook Sender)
+  try {
+    const webhookTarget = 'https://unienroll-backend.team03-enrollment.workers.dev/api/mock-partner/webhook';
+    await dispatchWebhook(c.env.DB, webhookTarget, 'enrollment.created', {
+      enrollment_id: newEnrollmentId,
+      student_id,
+      student_code: student.student_code,
+      course_code: section.course_code,
+      section_number: section.section_number,
+      semester: section.semester,
+      status: 'ENROLLED',
+    });
+  } catch (whErr) {
+    console.error('Webhook dispatch error:', whErr);
+  }
 
   return c.json({
     success: true,

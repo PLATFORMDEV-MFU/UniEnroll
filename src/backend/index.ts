@@ -9,6 +9,10 @@ import { courseRoutes } from './routes/courses';
 import { sectionRoutes } from './routes/sections';
 import { studentRoutes } from './routes/students';
 import { seedRoutes } from './routes/seed';
+import { partnerRoutes } from './routes/partner';
+import { webhookRoutes } from './routes/webhooks';
+import { externalRoutes } from './routes/external';
+import { mockPartnerRoutes } from './routes/mock-partner';
 
 const app = new Hono<AppEnv>();
 
@@ -18,35 +22,27 @@ app.use('*', prettyJSON());
 app.use('*', cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key']
+  allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Partner-Key', 'X-Partner-Id', 'X-Webhook-Secret', 'X-UniEnroll-Signature']
 }));
 
 // Root Information & Health Check
 app.get('/', (c) => {
   return c.json({
     project: 'UniEnroll API',
-    description: 'Course Enrollment Platform REST API deployed on Cloudflare Workers & D1',
+    description: 'Course Enrollment Platform REST API with Inter-Group Integration Hub',
     status: 'online',
-    version: '1.0.0',
-    endpoints: {
-      health: 'GET /health',
-      auth: {
-        login: 'POST /api/auth/login',
-        me: 'GET /api/auth/me'
+    version: '1.2.0',
+    a5_integration_hub: {
+      box_1_consumer: 'GET /api/external/check-eligibility?student_code=...',
+      box_2_provider: {
+        sections: 'GET /api/partner/sections (Headers: X-Partner-Key: partner-secret-key-2026)',
+        enrollments: 'GET /api/partner/enrollments',
+        logs: 'GET /api/partner/logs'
       },
-      enrollments: {
-        create: 'POST /api/enrollments (Authenticated)',
-        readAll: 'GET /api/enrollments (Authenticated)',
-        readOne: 'GET /api/enrollments/:id (Authenticated)',
-        update: 'PATCH /api/enrollments/:id (Authenticated)',
-        delete: 'DELETE /api/enrollments/:id (Authenticated)'
-      },
-      supporting_resources: {
-        courses: 'GET /api/courses',
-        sections: 'GET /api/sections',
-        students: 'GET /api/students',
-        seed: 'POST /api/seed'
-      }
+      box_3_webhook_receiver: 'POST /api/webhooks/incoming (Headers: X-Webhook-Secret: whsec_partner_secret_2026)',
+      box_4_webhook_sender: 'Dispatched automatically on POST /api/enrollments',
+      box_5_idempotency: 'Supported on POST /api/enrollments via header Idempotency-Key',
+      box_6_degradation: 'Triggered via GET /api/external/check-eligibility?simulate_breakage=true'
     }
   });
 });
@@ -55,13 +51,19 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Mount Routes
+// Mount Standard Platform Routes
 app.route('/api/auth', authRoutes);
 app.route('/api/courses', courseRoutes);
 app.route('/api/sections', sectionRoutes);
 app.route('/api/students', studentRoutes);
 app.route('/api/seed', seedRoutes);
 app.route('/api/enrollments', enrollmentRoutes);
+
+// Mount A5 Inter-Group Integration Routes
+app.route('/api/partner', partnerRoutes);
+app.route('/api/webhooks', webhookRoutes);
+app.route('/api/external', externalRoutes);
+app.route('/api/mock-partner', mockPartnerRoutes);
 
 // Global 404 Handler
 app.notFound((c) => {
