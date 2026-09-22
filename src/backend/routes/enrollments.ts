@@ -9,6 +9,46 @@ export const enrollmentRoutes = new Hono<AppEnv>();
 // Enforce JWT authentication for all enrollment routes
 enrollmentRoutes.use('*', authMiddleware);
 
+// GET /api/enrollments/me (fetch current student active enrollments)
+enrollmentRoutes.get('/me', async (c) => {
+  const user = c.get('user');
+  const studentId = (user && user.sub) ? user.sub : 1;
+
+  const query = `
+    SELECT 
+      e.id,
+      e.student_id,
+      e.section_id,
+      e.status,
+      e.enrolled_at,
+      e.updated_at,
+      st.student_code,
+      st.full_name AS student_name,
+      c.course_code,
+      c.title AS course_title,
+      c.credits,
+      s.section_number,
+      s.semester,
+      s.schedule,
+      s.room
+    FROM enrollments e
+    JOIN students st ON e.student_id = st.id
+    JOIN sections s ON e.section_id = s.id
+    JOIN courses c ON s.course_id = c.id
+    WHERE e.student_id = ? AND e.status = 'ENROLLED'
+    ORDER BY c.course_code ASC
+  `;
+
+  const { results } = await c.env.DB.prepare(query).bind(studentId).all<Enrollment>();
+
+  return c.json({
+    success: true,
+    total: results.length,
+    student_id: studentId,
+    data: results
+  });
+});
+
 // 1. GET /api/enrollments (Read All with optional filters)
 enrollmentRoutes.get('/', async (c) => {
   const user = c.get('user');
@@ -165,18 +205,28 @@ enrollmentRoutes.post('/', idempotencyMiddleware, async (c) => {
     }, 404);
   }
 
-  // Business Rule Step 3: Check Active Duplicate Enrollment
-  const existingActive = await c.env.DB.prepare(`
-    SELECT id FROM enrollments 
-    WHERE student_id = ? AND section_id = ? AND status = 'ENROLLED'
-  `).bind(student_id, section_id).first();
+  // Business Rule Step 3: Check Active Duplicate Enrollment (Section-level and Course-level)
+  const existingSameCourse = await c.env.DB.prepare(`
+    SELECT e.id, s.section_number, s.id as section_id
+    FROM enrollments e
+    JOIN sections s ON e.section_id = s.id
+    WHERE e.student_id = ? AND s.course_id = ? AND s.semester = ? AND e.status = 'ENROLLED'
+  `).bind(student_id, section.course_id, section.semester).first<{ id: number, section_number: string, section_id: number }>();
 
-  if (existingActive) {
-    return c.json({
-      success: false,
-      error_code: 'ERR_DUPLICATE_ENROLLMENT',
-      error: `Student ${student.student_code} is already actively enrolled in section ${section.section_number} of ${section.course_code}`
-    }, 409);
+  if (existingSameCourse) {
+    if (existingSameCourse.section_id === section_id) {
+      return c.json({
+        success: false,
+        error_code: 'ERR_DUPLICATE_ENROLLMENT',
+        error: `Database constraint violation: Student ${student.student_code} is already actively enrolled in section ${section.section_number}`
+      }, 409);
+    } else {
+      return c.json({
+        success: false,
+        error_code: 'ERR_DUPLICATE_COURSE_ENROLLMENT',
+        error: `Student ${student.student_code} is already actively enrolled in another section of course ${section.course_code} for semester ${section.semester}. Use section swap to change sections.`
+      }, 409);
+    }
   }
 
   // Business Rule Step 4: Check Seat Capacity (BR-01 Strict Capacity Protection)
@@ -323,6 +373,19 @@ enrollmentRoutes.patch('/:id', async (c) => {
 
     if (!targetSection) {
       return c.json({ success: false, error: `Target section with ID ${targetSectionId} not found` }, 404);
+    }
+
+    // Validate that swap is within the same course
+    const currentSection = await c.env.DB.prepare(
+      'SELECT * FROM sections WHERE id = ?'
+    ).bind(existing.section_id).first<Section>();
+
+    if (currentSection && currentSection.course_id !== targetSection.course_id) {
+      return c.json({
+        success: false,
+        error_code: 'ERR_INVALID_SWAP',
+        error: 'Cannot swap sections across different courses. Swap is only allowed between sections of the same course.'
+      }, 400);
     }
 
     // Check target capacity

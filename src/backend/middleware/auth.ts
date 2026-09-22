@@ -13,6 +13,17 @@ export function getJwtSecret(env?: { JWT_SECRET?: string }): string {
  * Attaches verified payload to `c.set('user', payload)`.
  */
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
+  // Allow partner service with X-Partner-Key
+  const partnerKey = c.req.header('X-Partner-Key');
+  if (partnerKey && (partnerKey === 'partner-secret-key-2026' || partnerKey === 'team-04-timetable-key')) {
+    c.set('user', {
+      sub: 1,
+      student_code: 'PARTNER',
+      role: 'STAFF'
+    });
+    return await next();
+  }
+
   const authHeader = c.req.header('Authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

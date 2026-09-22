@@ -35,11 +35,11 @@ app.get('/', (c) => {
     a5_integration_hub: {
       box_1_consumer: 'GET /api/external/check-eligibility?student_code=...',
       box_2_provider: {
-        sections: 'GET /api/partner/sections (Headers: X-Partner-Key: partner-secret-key-2026)',
-        enrollments: 'GET /api/partner/enrollments',
+        sections: 'GET /api/partner/sections (Requires header: X-Partner-Key)',
+        enrollments: 'GET /api/partner/enrollments (Requires header: X-Partner-Key)',
         logs: 'GET /api/partner/logs'
       },
-      box_3_webhook_receiver: 'POST /api/webhooks/incoming (Headers: X-Webhook-Secret: whsec_partner_secret_2026)',
+      box_3_webhook_receiver: 'POST /api/webhooks/incoming (Requires header: X-Webhook-Secret)',
       box_4_webhook_sender: 'Dispatched automatically on POST /api/enrollments',
       box_5_idempotency: 'Supported on POST /api/enrollments via header Idempotency-Key',
       box_6_degradation: 'Triggered via GET /api/external/check-eligibility?simulate_breakage=true'

@@ -87,6 +87,7 @@ partnerRoutes.get('/sections', async (c) => {
 partnerRoutes.get('/enrollments', async (c) => {
   const courseCode = c.req.query('course_code');
   const sectionNumber = c.req.query('section_number');
+  const studentCode = c.req.query('student_code');
 
   let query = `
     SELECT 
@@ -118,6 +119,10 @@ partnerRoutes.get('/enrollments', async (c) => {
     query += ' AND s.section_number = ?';
     params.push(sectionNumber);
   }
+  if (studentCode) {
+    query += ' AND st.student_code = ?';
+    params.push(studentCode);
+  }
 
   query += ' ORDER BY c.course_code ASC, s.section_number ASC, st.student_code ASC';
 
@@ -128,6 +133,56 @@ partnerRoutes.get('/enrollments', async (c) => {
     provider: 'UniEnroll Team 03',
     service: 'Active Student Enrollment Roster',
     total_active_students: results.length,
+    data: results,
+  });
+});
+
+// 2.1 GET /api/partner/students/:code/enrollments (Direct student enrollment lookup by Student Code)
+partnerRoutes.get('/students/:code/enrollments', async (c) => {
+  const code = c.req.param('code');
+
+  const student = await c.env.DB.prepare(
+    'SELECT id, student_code, full_name, email, major FROM students WHERE student_code = ?'
+  ).bind(code).first<{ id: number; student_code: string; full_name: string; email: string; major: string }>();
+
+  if (!student) {
+    return c.json({ success: false, error: `Student with code ${code} not found` }, 404);
+  }
+
+  const query = `
+    SELECT 
+      e.id,
+      e.student_id,
+      e.section_id,
+      e.status,
+      e.enrolled_at,
+      st.student_code,
+      st.full_name AS student_name,
+      c.course_code,
+      c.title AS course_title,
+      c.credits,
+      s.section_number,
+      s.semester,
+      s.schedule,
+      s.room
+    FROM enrollments e
+    JOIN students st ON e.student_id = st.id
+    JOIN sections s ON e.section_id = s.id
+    JOIN courses c ON s.course_id = c.id
+    WHERE e.student_id = ? AND e.status = 'ENROLLED'
+    ORDER BY c.course_code ASC
+  `;
+
+  const { results } = await c.env.DB.prepare(query).bind(student.id).all();
+
+  return c.json({
+    success: true,
+    provider: 'UniEnroll Team 03',
+    service: 'Student Enrolled Courses Provider',
+    total: results.length,
+    student_id: student.id,
+    student_code: student.student_code,
+    student_name: student.full_name,
     data: results,
   });
 });

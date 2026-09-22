@@ -28,19 +28,16 @@ INSERT INTO sections (id, course_id, section_number, semester, schedule, room, m
 -- CS301 SEC01: Open (0/35)
 (4, 3, 'SEC01', '2026/1', 'FRI 09:00-12:00', 'LAB-102', 35, 0),
 -- SE201 SEC01: Open (1/30)
-(5, 4, 'SEC01', '2026/1', 'THU 13:00-16:00', 'CB1-201', 30, 1);
+(5, 4, 'SEC01', '2026/1', 'THU 13:00-16:00', 'CB1-201', 30, 1),
+-- CS202 SEC03: Open (0/30) available for section swap testing!
+(6, 2, 'SEC03', '2026/1', 'FRI 13:30-15:00', 'CB2-405', 30, 0);
 
 -- 3. Insert Students
-INSERT INTO students (id, student_code, full_name, email, major) VALUES
-(1, '65010042', 'Somchai Prasert', 's65010042@university.ac.th', 'Software Engineering'),
-(2, '65010088', 'Wipada Srisuk', 's65010088@university.ac.th', 'Computer Science'),
-(3, '66010123', 'Thanawat Jaiyen', 's66010123@university.ac.th', 'Information Technology'),
-(4, '66010199', 'Nattaporn Meedee', 's66010199@university.ac.th', 'Computer Science');
 INSERT INTO students (id, student_code, full_name, email, major, password_hash, role) VALUES
-(1, '65010042', 'Somchai Prasert', 's65010042@university.ac.th', 'Software Engineering', '', 'STUDENT'),
-(2, '65010088', 'Wipada Srisuk', 's65010088@university.ac.th', 'Computer Science', '', 'STUDENT'),
-(3, '66010123', 'Thanawat Jaiyen', 's66010123@university.ac.th', 'Information Technology', '', 'STUDENT'),
-(4, '66010199', 'Nattaporn Meedee', 's66010199@university.ac.th', 'Computer Science', '', 'STUDENT');
+(1, '65010042', 'Somchai Prasert', 's65010042@university.ac.th', 'Software Engineering', 'c2FsdF82NTAxMDA0Mg==:c0f73f328db40e796e6d1c9ef0d4d7d11ab3c13e4b0c7974e6c46a6f6ee08fdb', 'STUDENT'),
+(2, '65010088', 'Wipada Srisuk', 's65010088@university.ac.th', 'Computer Science', 'c2FsdF82NTAxMDA4OA==:a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0', 'STUDENT'),
+(3, '66010123', 'Thanawat Jaiyen', 's66010123@university.ac.th', 'Information Technology', 'c2FsdF82NjAxMDEyMw==:b2c3d4e5f6a17890123456789abcdef0123456789abcdef0123456789abcdef0', 'STUDENT'),
+(4, '66010199', 'Nattaporn Meedee', 's66010199@university.ac.th', 'Computer Science', 'c2FsdF82NjAxMDE5OQ==:c3d4e5f6a1b27890123456789abcdef0123456789abcdef0123456789abcdef0', 'STUDENT');
 
 -- 4. Initial Seed Enrollments
 -- Student 1 enrolled in CS101 SEC01

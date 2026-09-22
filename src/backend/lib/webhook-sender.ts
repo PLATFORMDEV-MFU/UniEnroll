@@ -4,9 +4,14 @@
  */
 
 export const DEFAULT_WEBHOOK_SECRET = 'whsec_unienroll_intergroup_secret_2026';
-export const DEFAULT_PARTNER_WEBHOOK_URL = 'https://partner-scheduling.university.ac.th/api/webhooks/enrollments';
+export const DEFAULT_PARTNER_WEBHOOK_URL = 'https://timetable-room-api.6731503021.workers.dev/api/enrollments/event';
 
 export interface WebhookEventPayload {
+  event_id?: string;
+  event_name?: string;
+  student_id?: string;
+  section_id?: string;
+  action?: string;
   event: 'enrollment.created' | 'enrollment.swapped' | 'enrollment.dropped';
   timestamp: string;
   data: Record<string, any>;
@@ -40,9 +45,19 @@ export async function dispatchWebhook(
   eventData: Record<string, any>,
   secret: string = DEFAULT_WEBHOOK_SECRET
 ): Promise<{ success: boolean; status: number; signature: string; response: string }> {
-  const payload: WebhookEventPayload = {
+  const now = new Date().toISOString();
+  const studentIdStr = eventData.student_code || String(eventData.student_id || 'usr_std_001');
+  const sectionIdStr = eventData.section_id_str || (eventData.course_code ? `sec_${String(eventData.course_code).toLowerCase()}_01` : 'sec_swe204_01');
+  const actionStr = event === 'enrollment.dropped' ? 'dropped' : (eventData.action || 'enrolled');
+
+  const payload: any = {
+    event_id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    event_name: 'enrollment.changed',
+    student_id: studentIdStr,
+    section_id: sectionIdStr,
+    action: actionStr,
+    timestamp: now,
     event,
-    timestamp: new Date().toISOString(),
     data: eventData,
   };
 

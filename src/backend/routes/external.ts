@@ -142,3 +142,49 @@ externalRoutes.get('/check-eligibility', async (c) => {
   });
 });
 
+/**
+ * Real Partner Consumer Route: Team 04 Timetable & Classroom Allocation (Box 1 Consumer Proof)
+ * Endpoint: GET /api/external/timetable?student_id=usr_std_001
+ */
+externalRoutes.get('/timetable', async (c) => {
+  const studentId = c.req.query('student_id') || 'usr_std_001';
+  const partnerUrl = `https://timetable-room-api.6731503021.workers.dev/api/timetables/me?student_id=${studentId}`;
+  
+  const startTime = performance.now();
+  const requestTimestamp = new Date().toISOString();
+
+  try {
+    const res = await fetch(partnerUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    const durationMs = Math.round(performance.now() - startTime);
+    const data = await res.json().catch(() => ({}));
+
+    // Record in partner_request_logs
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO partner_request_logs (partner_id, endpoint, method, status_code) VALUES (?, ?, ?, ?)'
+      ).bind('team04-timetable-room', partnerUrl, 'GET', res.status).run();
+    } catch {}
+
+    return c.json({
+      success: res.ok,
+      box_1_consumer_proof: {
+        partner_id: 'team04-timetable-room',
+        partner_name: 'Timetable & Classroom Allocation (Team 04 - 6731503021)',
+        partner_url: partnerUrl,
+        request_timestamp: requestTimestamp,
+        duration_ms: durationMs,
+        response_status: res.status,
+      },
+      partner_data: data
+    });
+  } catch (err: any) {
+    return c.json({
+      success: false,
+      error: err.message || 'Failed to connect to partner timetable service'
+    }, 502);
+  }
+});
+

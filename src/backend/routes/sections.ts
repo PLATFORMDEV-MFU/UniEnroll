@@ -49,13 +49,8 @@ sectionRoutes.get('/', async (c) => {
   });
 });
 
-// GET /api/sections/:id (availability for specific section)
-sectionRoutes.get('/:id', async (c) => {
-  const id = Number(c.req.param('id'));
-  if (isNaN(id)) {
-    return c.json({ success: false, error: 'Invalid section ID' }, 400);
-  }
-
+// Helper function for section availability query
+async function getSectionAvailability(db: D1Database, id: number) {
   const query = `
     SELECT 
       s.id,
@@ -75,9 +70,46 @@ sectionRoutes.get('/:id', async (c) => {
     JOIN courses c ON s.course_id = c.id
     WHERE s.id = ?
   `;
+  return await db.prepare(query).bind(id).first<Section>();
+}
 
-  const section = await c.env.DB.prepare(query).bind(id).first<Section>();
+// GET /api/sections/:id (availability for specific section)
+sectionRoutes.get('/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (isNaN(id)) {
+    return c.json({ success: false, error: 'Invalid section ID' }, 400);
+  }
 
+  const section = await getSectionAvailability(c.env.DB, id);
+  if (!section) {
+    return c.json({ success: false, error: `Section with ID ${id} not found` }, 404);
+  }
+
+  return c.json({
+    success: true,
+    data: section
+  });
+});
+
+// GET /api/sections/:id/availability (explicit alias requested by partner group)
+sectionRoutes.get('/:id/availability', async (c) => {
+  const id = Number(c.req.param('id'));
+  const partnerKey = c.req.header('X-Partner-Key');
+  const partnerId = c.req.header('X-Partner-Id') || 'team-04-timetable-and-scheduling';
+
+  if (partnerKey) {
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO partner_request_logs (partner_id, endpoint, method, status_code) VALUES (?, ?, ?, ?)'
+      ).bind(partnerId, c.req.path, c.req.method, 200).run();
+    } catch {}
+  }
+
+  if (isNaN(id)) {
+    return c.json({ success: false, error: 'Invalid section ID' }, 400);
+  }
+
+  const section = await getSectionAvailability(c.env.DB, id);
   if (!section) {
     return c.json({ success: false, error: `Section with ID ${id} not found` }, 404);
   }

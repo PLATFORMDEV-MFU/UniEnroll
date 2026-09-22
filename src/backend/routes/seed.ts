@@ -31,6 +31,7 @@ seedRoutes.post('/', async (c) => {
       c.env.DB.prepare('INSERT INTO sections (id, course_id, section_number, semester, schedule, room, max_capacity, enrolled_count) VALUES (3, 2, "SEC02", "2026/1", "MON_WED 13:30-15:00", "CB2-405", 2, 2)'),
       c.env.DB.prepare('INSERT INTO sections (id, course_id, section_number, semester, schedule, room, max_capacity, enrolled_count) VALUES (4, 3, "SEC01", "2026/1", "FRI 09:00-12:00", "LAB-102", 35, 0)'),
       c.env.DB.prepare('INSERT INTO sections (id, course_id, section_number, semester, schedule, room, max_capacity, enrolled_count) VALUES (5, 4, "SEC01", "2026/1", "THU 13:00-16:00", "CB1-201", 30, 1)'),
+      c.env.DB.prepare('INSERT INTO sections (id, course_id, section_number, semester, schedule, room, max_capacity, enrolled_count) VALUES (6, 2, "SEC03", "2026/1", "FRI 13:30-15:00", "CB2-405", 30, 0)'),
     ];
 
     // 4. Insert Students with hashed default passwords (password == student_code)
