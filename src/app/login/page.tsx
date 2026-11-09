@@ -6,10 +6,10 @@ import { useAuth } from '../../lib/auth-context';
 import { GraduationCap, Lock, User, Loader2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 
 const DEMO_STUDENTS = [
-  { code: '65010042', name: 'Somchai Prasert', major: 'SE' },
-  { code: '65010088', name: 'Wipada Srisuk', major: 'CS' },
-  { code: '66010123', name: 'Thanawat Jaiyen', major: 'IT' },
-  { code: '66010199', name: 'Nattaporn Meedee', major: 'CS' },
+  { code: '65010042', name: 'Somchai Prasert', major: 'SE', role: 'STUDENT' },
+  { code: '65010088', name: 'Wipada Srisuk', major: 'CS', role: 'STUDENT' },
+  { code: '66010123', name: 'Thanawat Jaiyen', major: 'IT', role: 'STUDENT' },
+  { code: 'staff01', name: 'Dr. Apinya (Staff)', major: 'Registrar', role: 'STAFF' },
 ];
 
 export default function LoginPage() {

@@ -20,6 +20,7 @@ enrollmentRoutes.get('/me', async (c) => {
       e.student_id,
       e.section_id,
       e.status,
+      e.withdrawal_reason,
       e.enrolled_at,
       e.updated_at,
       st.student_code,
@@ -35,7 +36,7 @@ enrollmentRoutes.get('/me', async (c) => {
     JOIN students st ON e.student_id = st.id
     JOIN sections s ON e.section_id = s.id
     JOIN courses c ON s.course_id = c.id
-    WHERE e.student_id = ? AND e.status = 'ENROLLED'
+    WHERE e.student_id = ? AND e.status IN ('ENROLLED', 'OVERRIDDEN')
     ORDER BY c.course_code ASC
   `;
 
@@ -210,7 +211,7 @@ enrollmentRoutes.post('/', idempotencyMiddleware, async (c) => {
     SELECT e.id, s.section_number, s.id as section_id
     FROM enrollments e
     JOIN sections s ON e.section_id = s.id
-    WHERE e.student_id = ? AND s.course_id = ? AND s.semester = ? AND e.status = 'ENROLLED'
+    WHERE e.student_id = ? AND s.course_id = ? AND s.semester = ? AND e.status IN ('ENROLLED', 'OVERRIDDEN')
   `).bind(student_id, section.course_id, section.semester).first<{ id: number, section_number: string, section_id: number }>();
 
   if (existingSameCourse) {
@@ -501,8 +502,9 @@ enrollmentRoutes.delete('/:id', async (c) => {
 
   const now = new Date().toISOString();
 
-  // If currently active ENROLLED, decrement seat count
-  if (existing.status === 'ENROLLED') {
+  // If currently active (ENROLLED or OVERRIDDEN), decrement seat count
+  const wasActive = existing.status === 'ENROLLED' || existing.status === 'OVERRIDDEN';
+  if (wasActive) {
     const updateEnrollStmt = c.env.DB.prepare(`
       UPDATE enrollments SET status = 'DROPPED', updated_at = ? WHERE id = ?
     `).bind(now, id);
@@ -517,12 +519,103 @@ enrollmentRoutes.delete('/:id', async (c) => {
   return c.json({
     success: true,
     message: `Enrollment ID ${id} has been dropped successfully`,
-    freed_seats: existing.status === 'ENROLLED' ? 1 : 0,
+    freed_seats: wasActive ? 1 : 0,
     data: {
       enrollment_id: id,
       student_id: existing.student_id,
       section_id: existing.section_id,
       status: 'DROPPED',
+      updated_at: now
+    }
+  });
+});
+
+// 6. POST /api/enrollments/:id/withdraw (Official Course Withdrawal with 'W' Grade)
+enrollmentRoutes.post('/:id/withdraw', async (c) => {
+  const id = Number(c.req.param('id'));
+
+  if (isNaN(id)) {
+    return c.json({ success: false, error: 'Invalid enrollment ID' }, 400);
+  }
+
+  let body: { reason?: string } = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    // Body is optional
+  }
+
+  const existing = await c.env.DB.prepare(`
+    SELECT e.*, st.student_code, st.full_name AS student_name, c.course_code, s.section_number
+    FROM enrollments e
+    JOIN students st ON e.student_id = st.id
+    JOIN sections s ON e.section_id = s.id
+    JOIN courses c ON s.course_id = c.id
+    WHERE e.id = ?
+  `).bind(id).first<Enrollment>();
+
+  if (!existing) {
+    return c.json({ success: false, error: `Enrollment with ID ${id} not found` }, 404);
+  }
+
+  const user = c.get('user');
+  if (user && user.role !== 'STAFF' && existing.student_id !== user.sub) {
+    return c.json({ success: false, error: 'Forbidden: You can only withdraw from your own enrollments' }, 403);
+  }
+
+  if (existing.status !== 'ENROLLED' && existing.status !== 'OVERRIDDEN') {
+    return c.json({
+      success: false,
+      error_code: 'ERR_INVALID_STATUS_FOR_WITHDRAWAL',
+      error: `Cannot withdraw an enrollment that is already ${existing.status}`
+    }, 400);
+  }
+
+  const now = new Date().toISOString();
+  const reason = body.reason?.trim() || 'Student requested official course withdrawal';
+
+  // Decrement section seat count and update status to WITHDRAWN
+  const updateEnrollStmt = c.env.DB.prepare(`
+    UPDATE enrollments 
+    SET status = 'WITHDRAWN', withdrawal_reason = ?, updated_at = ? 
+    WHERE id = ?
+  `).bind(reason, now, id);
+
+  const decSectionStmt = c.env.DB.prepare(`
+    UPDATE sections SET enrolled_count = MAX(0, enrolled_count - 1) WHERE id = ?
+  `).bind(existing.section_id);
+
+  await c.env.DB.batch([updateEnrollStmt, decSectionStmt]);
+
+  // Dispatch outgoing webhook: enrollment.withdrawn (A5 Box 4)
+  try {
+    const webhookTarget = 'https://unienroll-backend.team03-enrollment.workers.dev/api/mock-partner/webhook';
+    await dispatchWebhook(c.env.DB, webhookTarget, 'enrollment.withdrawn', {
+      enrollment_id: id,
+      student_id: existing.student_id,
+      student_code: existing.student_code,
+      course_code: existing.course_code,
+      section_number: existing.section_number,
+      status: 'WITHDRAWN',
+      reason,
+      withdrawn_at: now
+    });
+  } catch (whErr) {
+    console.error('Failed to dispatch withdrawal webhook:', whErr);
+  }
+
+  return c.json({
+    success: true,
+    message: `Enrollment ID ${id} has been withdrawn with 'W' grade recorded.`,
+    data: {
+      enrollment_id: id,
+      student_id: existing.student_id,
+      student_code: existing.student_code,
+      course_code: existing.course_code,
+      section_number: existing.section_number,
+      status: 'WITHDRAWN',
+      grade: 'W',
+      withdrawal_reason: reason,
       updated_at: now
     }
   });

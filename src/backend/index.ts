@@ -5,6 +5,7 @@ import { prettyJSON } from 'hono/pretty-json';
 import { AppEnv } from './types';
 import { authRoutes } from './routes/auth';
 import { enrollmentRoutes } from './routes/enrollments';
+import { overrideRoutes } from './routes/overrides';
 import { courseRoutes } from './routes/courses';
 import { sectionRoutes } from './routes/sections';
 import { studentRoutes } from './routes/students';
@@ -58,6 +59,12 @@ app.route('/api/sections', sectionRoutes);
 app.route('/api/students', studentRoutes);
 app.route('/api/seed', seedRoutes);
 app.route('/api/enrollments', enrollmentRoutes);
+app.route('/api/overrides', overrideRoutes);
+
+// Direct root aliases to support exact PRD path requirements (e.g. POST /overrides)
+app.route('/enrollments', enrollmentRoutes);
+app.route('/sections', sectionRoutes);
+app.route('/overrides', overrideRoutes);
 
 // Mount A5 Inter-Group Integration Routes
 app.route('/api/partner', partnerRoutes);

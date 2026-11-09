@@ -119,7 +119,55 @@ async function runProdTests() {
     console.log(`Capacity Race Request #${i + 1} Status: ${res.status}`, data.message || data.error_code || data.error);
   }
 
-  console.log('\n🎉 ALL PRODUCTION API & CONCURRENCY TESTS PASSED ON CLOUDFLARE WORKERS & D1!');
+  // 12. Test Official Withdrawal: POST /api/enrollments/:id/withdraw (Records 'W' Grade)
+  console.log('\n--- 12. Withdrawal Test: POST /api/enrollments/1/withdraw ---');
+  const withdrawRes = await fetch(`${BASE_URL}/api/enrollments/1/withdraw`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Partner-Key': 'partner-secret-key-2026' },
+    body: JSON.stringify({ reason: 'Official academic schedule adjustment' })
+  });
+  console.log('Withdrawal Status:', withdrawRes.status, await withdrawRes.json());
+
+  // 13. Test Override Authority: Student Attempt -> 403 Forbidden
+  console.log('\n--- 13. Override Authority Test (Unauthorized Student Attempt) ---');
+  const unauthOverride = await fetch(`${BASE_URL}/api/overrides`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      student_code: '65010042',
+      section_id: 3,
+      override_type: 'CAPACITY',
+      reason: 'Student attempting self-override'
+    })
+  });
+  console.log('Unauthorized Override Status (Expect 401/403):', unauthOverride.status, await unauthOverride.json());
+
+  // 14. Test Staff Override: Authorized Staff -> 201 Created
+  console.log('\n--- 14. Staff Override Test: POST /api/overrides (Authorized Staff) ---');
+  const staffOverride = await fetch(`${BASE_URL}/api/overrides`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Partner-Key': 'partner-secret-key-2026',
+    },
+    body: JSON.stringify({
+      student_code: '65010042',
+      section_id: 3, // Full section
+      override_type: 'CAPACITY',
+      reason: 'Dean approved capacity override for graduating student'
+    })
+  });
+  console.log('Staff Override Status:', staffOverride.status, await staffOverride.json());
+
+  // 15. Test Overrides Audit Trail: GET /api/overrides
+  console.log('\n--- 15. Overrides Audit Trail: GET /api/overrides ---');
+  const auditRes = await fetch(`${BASE_URL}/api/overrides`, {
+    headers: { 'X-Partner-Key': 'partner-secret-key-2026' }
+  });
+  const auditData = await auditRes.json();
+  console.log(`Audit Trail Status: ${auditRes.status}, Total Overrides: ${auditData.total}`);
+
+  console.log('\n🎉 ALL PRODUCTION API, CONCURRENCY, WITHDRAWAL & OVERRIDE TESTS COMPLETE!');
 }
 
 runProdTests().catch(console.error);

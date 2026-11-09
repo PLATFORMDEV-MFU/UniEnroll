@@ -58,7 +58,8 @@ export interface Enrollment {
   id: number;
   student_id: number;
   section_id: number;
-  status: 'ENROLLED' | 'DROPPED';
+  status: 'ENROLLED' | 'DROPPED' | 'WITHDRAWN' | 'OVERRIDDEN';
+  withdrawal_reason?: string;
   enrolled_at: string;
   updated_at: string;
   student_code: string;
@@ -70,6 +71,23 @@ export interface Enrollment {
   semester: string;
   schedule: string;
   room?: string;
+}
+
+export interface Override {
+  id: number;
+  student_id: number;
+  section_id: number;
+  staff_id: number;
+  override_type: 'CAPACITY' | 'PREREQUISITE' | 'LATE_ADD' | 'SPECIAL_PERMISSION';
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  created_at: string;
+  student_code?: string;
+  student_name?: string;
+  course_code?: string;
+  course_title?: string;
+  section_number?: string;
+  staff_name?: string;
 }
 
 export interface ApiLog {

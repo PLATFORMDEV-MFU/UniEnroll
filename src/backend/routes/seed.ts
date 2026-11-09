@@ -9,6 +9,7 @@ seedRoutes.post('/', async (c) => {
   try {
     // 1. Clean existing tables
     await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM overrides'),
       c.env.DB.prepare('DELETE FROM enrollments'),
       c.env.DB.prepare('DELETE FROM sections'),
       c.env.DB.prepare('DELETE FROM courses'),
@@ -34,20 +35,21 @@ seedRoutes.post('/', async (c) => {
       c.env.DB.prepare('INSERT INTO sections (id, course_id, section_number, semester, schedule, room, max_capacity, enrolled_count) VALUES (6, 2, "SEC03", "2026/1", "FRI 13:30-15:00", "CB2-405", 30, 0)'),
     ];
 
-    // 4. Insert Students with hashed default passwords (password == student_code)
-    const seedStudents = [
-      { id: 1, code: '65010042', name: 'Somchai Prasert', email: 's65010042@university.ac.th', major: 'Software Engineering' },
-      { id: 2, code: '65010088', name: 'Wipada Srisuk', email: 's65010088@university.ac.th', major: 'Computer Science' },
-      { id: 3, code: '66010123', name: 'Thanawat Jaiyen', email: 's66010123@university.ac.th', major: 'Information Technology' },
-      { id: 4, code: '66010199', name: 'Nattaporn Meedee', email: 's66010199@university.ac.th', major: 'Computer Science' },
+    // 4. Insert Students & Staff with hashed default passwords (password == student_code)
+    const seedUsers = [
+      { id: 1, code: '65010042', name: 'Somchai Prasert', email: 's65010042@university.ac.th', major: 'Software Engineering', role: 'STUDENT' },
+      { id: 2, code: '65010088', name: 'Wipada Srisuk', email: 's65010088@university.ac.th', major: 'Computer Science', role: 'STUDENT' },
+      { id: 3, code: '66010123', name: 'Thanawat Jaiyen', email: 's66010123@university.ac.th', major: 'Information Technology', role: 'STUDENT' },
+      { id: 4, code: '66010199', name: 'Nattaporn Meedee', email: 's66010199@university.ac.th', major: 'Computer Science', role: 'STUDENT' },
+      { id: 5, code: 'staff01', name: 'Dr. Apinya Somboon (Registrar Staff)', email: 'staff01@university.ac.th', major: 'Academic Registrar Office', role: 'STAFF' },
     ];
 
     const studentStmts = await Promise.all(
-      seedStudents.map(async (st) => {
-        const hash = await hashPassword(st.code);
+      seedUsers.map(async (u) => {
+        const hash = await hashPassword(u.code);
         return c.env.DB.prepare(
-          'INSERT INTO students (id, student_code, full_name, email, major, password_hash, role) VALUES (?, ?, ?, ?, ?, ?, "STUDENT")'
-        ).bind(st.id, st.code, st.name, st.email, st.major, hash);
+          'INSERT INTO students (id, student_code, full_name, email, major, password_hash, role) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(u.id, u.code, u.name, u.email, u.major, hash, u.role);
       })
     );
 
@@ -60,16 +62,22 @@ seedRoutes.post('/', async (c) => {
       c.env.DB.prepare('INSERT INTO enrollments (id, student_id, section_id, status, enrolled_at, updated_at) VALUES (5, 1, 5, "ENROLLED", "2026-08-15 09:30:00", "2026-08-15 09:30:00")'),
     ];
 
+    // 6. Insert Sample Override Log
+    const overrideStmts = [
+      c.env.DB.prepare('INSERT INTO overrides (id, student_id, section_id, staff_id, override_type, reason, status, created_at) VALUES (1, 1, 5, 5, "SPECIAL_PERMISSION", "Academic advisor approved SE201 registration exception", "APPROVED", "2026-08-15 09:30:00")'),
+    ];
+
     await c.env.DB.batch([
       ...courseStmts,
       ...sectionStmts,
       ...studentStmts,
       ...enrollmentStmts,
+      ...overrideStmts,
     ]);
 
     return c.json({
       success: true,
-      message: 'Database seeded successfully with 5 courses, 5 sections, 4 students (with hashed passwords), and 5 enrollments.',
+      message: 'Database seeded successfully with 5 courses, 6 sections, 5 users (including Staff), 5 enrollments, and initial override log.',
     });
   } catch (error: any) {
     return c.json({

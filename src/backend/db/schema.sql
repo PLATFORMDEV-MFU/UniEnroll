@@ -41,12 +41,25 @@ CREATE TABLE IF NOT EXISTS enrollments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
-    status TEXT NOT NULL DEFAULT 'ENROLLED' CHECK (status IN ('ENROLLED', 'DROPPED')),
+    status TEXT NOT NULL DEFAULT 'ENROLLED' CHECK (status IN ('ENROLLED', 'DROPPED', 'WITHDRAWN', 'OVERRIDDEN')),
+    withdrawal_reason TEXT,
     enrolled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Idempotency Keys Table (A5 Box 5: Idempotency Protection)
+-- 5. Overrides Table (Staff Override Console & Audit Trail)
+CREATE TABLE IF NOT EXISTS overrides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    section_id INTEGER NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+    staff_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    override_type TEXT NOT NULL CHECK (override_type IN ('CAPACITY', 'PREREQUISITE', 'LATE_ADD', 'SPECIAL_PERMISSION')),
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'APPROVED' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. Idempotency Keys Table (A5 Box 5: Idempotency Protection)
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     key TEXT PRIMARY KEY,
     request_path TEXT NOT NULL,
@@ -55,7 +68,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6. Webhook Logs Table (A5 Box 3 & Box 4: Webhook Receiver & Sender Audits)
+-- 7. Webhook Logs Table (A5 Box 3 & Box 4: Webhook Receiver & Sender Audits)
 CREATE TABLE IF NOT EXISTS webhook_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     direction TEXT NOT NULL CHECK (direction IN ('INCOMING', 'OUTGOING')),
@@ -68,7 +81,7 @@ CREATE TABLE IF NOT EXISTS webhook_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 7. Partner Request Logs Table (A5 Box 2: Provider Proof)
+-- 8. Partner Request Logs Table (A5 Box 2: Provider Proof)
 CREATE TABLE IF NOT EXISTS partner_request_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     partner_id TEXT NOT NULL,
@@ -83,10 +96,13 @@ CREATE INDEX IF NOT EXISTS idx_sections_course ON sections(course_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_student ON enrollments(student_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_section ON enrollments(section_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_status ON enrollments(status);
+CREATE INDEX IF NOT EXISTS idx_overrides_student ON overrides(student_id);
+CREATE INDEX IF NOT EXISTS idx_overrides_section ON overrides(section_id);
+CREATE INDEX IF NOT EXISTS idx_overrides_staff ON overrides(staff_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_direction ON webhook_logs(direction);
 CREATE INDEX IF NOT EXISTS idx_partner_logs_partner ON partner_request_logs(partner_id);
 
 -- Database-Level Constraint: Prevent duplicate active enrollments (Partial Unique Index)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_enrollment 
 ON enrollments(student_id, section_id) 
-WHERE status = 'ENROLLED';
+WHERE status IN ('ENROLLED', 'OVERRIDDEN');

@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Course, Section, Student, Enrollment, ApiLog } from '../types';
+import { Section, Student, Enrollment, ApiLog } from '../types';
 import { api, subscribeApiLogs } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
 import { CourseCatalog } from '../components/CourseCatalog';
 import { MyEnrollments } from '../components/MyEnrollments';
+import { StaffConsole } from '../components/StaffConsole';
 import { ApiInspector } from '../components/ApiInspector';
 import { ToastContainer, ToastMessage } from '../components/Toast';
 import { Loader2 } from 'lucide-react';
@@ -16,10 +17,10 @@ export default function Home() {
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const router = useRouter();
 
-  const [courses, setCourses] = useState<Course[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [myEnrollments, setMyEnrollments] = useState<Enrollment[]>([]);
-  const [activeTab, setActiveTab] = useState<'catalog' | 'my_enrollments' | 'api_logs'>('catalog');
+  const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
+  const [activeTab, setActiveTab] = useState<'catalog' | 'my_enrollments' | 'staff_console' | 'api_logs'>('catalog');
 
   const [isLoading, setIsLoading] = useState(true);
   const [isEnrollingId, setIsEnrollingId] = useState<number | null>(null);
@@ -64,13 +65,18 @@ export default function Home() {
 
   // Restore active tab from localStorage
   useEffect(() => {
-    const savedTab = localStorage.getItem('unienroll_active_tab') as any;
-    if (savedTab && ['catalog', 'my_enrollments', 'api_logs'].includes(savedTab)) {
+    const savedTab = localStorage.getItem('unienroll_active_tab');
+    if (
+      savedTab === 'catalog' ||
+      savedTab === 'my_enrollments' ||
+      savedTab === 'staff_console' ||
+      savedTab === 'api_logs'
+    ) {
       setActiveTab(savedTab);
     }
   }, []);
 
-  const handleTabChange = (tab: 'catalog' | 'my_enrollments' | 'api_logs') => {
+  const handleTabChange = (tab: 'catalog' | 'my_enrollments' | 'staff_console' | 'api_logs') => {
     setActiveTab(tab);
     localStorage.setItem('unienroll_active_tab', tab);
   };
@@ -86,14 +92,12 @@ export default function Home() {
   // Fetch initial course catalog data
   const fetchData = useCallback(async () => {
     try {
-      const [healthRes, coursesRes, sectionsRes] = await Promise.all([
+      const [healthRes, sectionsRes] = await Promise.all([
         api.getHealth(),
-        api.getCourses(),
         api.getSections(),
       ]);
 
       setApiOnline(healthRes.status === 200);
-      if (coursesRes.data) setCourses(coursesRes.data);
       if (sectionsRes.data) setSections(sectionsRes.data);
     } catch {
       setApiOnline(false);
@@ -111,11 +115,20 @@ export default function Home() {
     }
   }, []);
 
+  // Fetch all enrollments for staff management console
+  const fetchAllEnrollments = useCallback(async () => {
+    const res = await api.getEnrollments();
+    if (res.data) {
+      setAllEnrollments(res.data);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
+      fetchAllEnrollments();
     }
-  }, [isAuthenticated, fetchData]);
+  }, [isAuthenticated, fetchData, fetchAllEnrollments]);
 
   useEffect(() => {
     if (user) {
@@ -147,7 +160,7 @@ export default function Home() {
         'Registration Successful',
         `Successfully enrolled in ${section.course_code} ${section.section_number}`
       );
-      await Promise.all([fetchStudentEnrollments(user.id), refreshSections()]);
+      await Promise.all([fetchStudentEnrollments(user.id), fetchAllEnrollments(), refreshSections()]);
     } else {
       const errorCode =
         res.error_code ||
@@ -174,23 +187,41 @@ export default function Home() {
         'Course Dropped',
         `Dropped ${enrollment.course_code} ${enrollment.section_number} - 1 seat returned to section.`
       );
-      await Promise.all([fetchStudentEnrollments(user.id), refreshSections()]);
+      await Promise.all([fetchStudentEnrollments(user.id), fetchAllEnrollments(), refreshSections()]);
     } else {
       addToast('error', 'Drop Failed', res.error || 'Could not drop course');
     }
   };
 
-  // Action: Swap section (PATCH)
-  const handleSwap = async (enrollmentId: number, targetSectionId: number) => {
+  // Action: Withdraw from section (Grade W)
+  const handleWithdraw = async (enrollment: Enrollment, reason?: string) => {
+    if (!user) return;
+
+    const res = await api.withdrawEnrollment(enrollment.id, reason);
+    if (res.success) {
+      addToast(
+        'info',
+        'Course Withdrawn',
+        `Withdrawn from ${enrollment.course_code} ${enrollment.section_number} - Grade 'W' officially recorded.`
+      );
+      await Promise.all([fetchStudentEnrollments(user.id), fetchAllEnrollments(), refreshSections()]);
+    } else {
+      const errCode = res.error_code || 'ERR_WITHDRAWAL_FAILED';
+      addToast('error', 'Withdrawal Failed', res.error || 'Could not withdraw from course', errCode);
+    }
+  };
+
+  // Action: Swap section
+  const handleSwap = async (oldEnrollmentId: number, newSectionId: number) => {
     if (!user) return;
 
     setIsSwapping(true);
-    const res = await api.updateEnrollment(enrollmentId, { section_id: targetSectionId });
+    const res = await api.swapSection(oldEnrollmentId, newSectionId);
     setIsSwapping(false);
 
     if (res.success) {
       addToast('success', 'Section Swapped', 'Section updated on Cloudflare D1.');
-      await Promise.all([fetchStudentEnrollments(user.id), refreshSections()]);
+      await Promise.all([fetchStudentEnrollments(user.id), fetchAllEnrollments(), refreshSections()]);
     } else {
       const errorCode = res.error_code || (res.status === 422 ? 'ERR_CAPACITY_FULL' : 'ERR_SWAP_FAILED');
       addToast('error', 'Swap Failed', res.error || 'Could not swap section', errorCode);
@@ -206,7 +237,7 @@ export default function Home() {
     if (res.success) {
       addToast('success', 'Data Restored', 'D1 database restored with fresh demo dataset.');
       if (user) {
-        await Promise.all([fetchData(), fetchStudentEnrollments(user.id)]);
+        await Promise.all([fetchData(), fetchAllEnrollments(), fetchStudentEnrollments(user.id)]);
       } else {
         await fetchData();
       }
@@ -231,7 +262,9 @@ export default function Home() {
     return null;
   }
 
-  const activeEnrolledCount = myEnrollments.filter((e) => e.status === 'ENROLLED').length;
+  const activeEnrolledCount = myEnrollments.filter(
+    (e) => e.status === 'ENROLLED' || e.status === 'OVERRIDDEN'
+  ).length;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
@@ -266,9 +299,28 @@ export default function Home() {
             allSections={sections}
             onDrop={handleDrop}
             onSwap={handleSwap}
+            onWithdraw={handleWithdraw}
             onNavigateCatalog={() => handleTabChange('catalog')}
             isDroppingId={isDroppingId}
             isSwapping={isSwapping}
+          />
+        )}
+
+        {activeTab === 'staff_console' && (
+          <StaffConsole
+            currentUser={user}
+            allSections={sections}
+            allEnrollments={allEnrollments}
+            onRefresh={async () => {
+              await Promise.all([
+                refreshSections(),
+                fetchAllEnrollments(),
+                user ? fetchStudentEnrollments(user.id) : Promise.resolve(),
+              ]);
+            }}
+            onDrop={handleDrop}
+            onWithdraw={handleWithdraw}
+            addToast={addToast}
           />
         )}
 
@@ -279,7 +331,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
-        <p>UniEnroll • Assignment 2 • Cloudflare Workers + Hono JWT + TypeScript + D1</p>
+        <p>UniEnroll • PRD Team 03 • Cloudflare Workers + Hono JWT + TypeScript + D1</p>
       </footer>
 
       {/* Toast Notifications */}

@@ -12,7 +12,7 @@ export interface WebhookEventPayload {
   student_id?: string;
   section_id?: string;
   action?: string;
-  event: 'enrollment.created' | 'enrollment.swapped' | 'enrollment.dropped';
+  event: 'enrollment.created' | 'enrollment.swapped' | 'enrollment.dropped' | 'enrollment.withdrawn' | 'enrollment.overridden';
   timestamp: string;
   data: Record<string, any>;
 }
@@ -48,7 +48,13 @@ export async function dispatchWebhook(
   const now = new Date().toISOString();
   const studentIdStr = eventData.student_code || String(eventData.student_id || 'usr_std_001');
   const sectionIdStr = eventData.section_id_str || (eventData.course_code ? `sec_${String(eventData.course_code).toLowerCase()}_01` : 'sec_swe204_01');
-  const actionStr = event === 'enrollment.dropped' ? 'dropped' : (eventData.action || 'enrolled');
+  
+  let actionStr = 'enrolled';
+  if (event === 'enrollment.dropped') actionStr = 'dropped';
+  else if (event === 'enrollment.withdrawn') actionStr = 'withdrawn';
+  else if (event === 'enrollment.overridden') actionStr = 'overridden';
+  else if (event === 'enrollment.swapped') actionStr = 'swapped';
+  else if (eventData.action) actionStr = eventData.action;
 
   const payload: any = {
     event_id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -123,4 +129,3 @@ export async function dispatchWebhook(
     response: responseBody,
   };
 }
-

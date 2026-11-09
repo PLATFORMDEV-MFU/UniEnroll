@@ -1,4 +1,4 @@
-import { Course, Section, Student, Enrollment, ApiLog, AuthUser, LoginResponse } from '../types';
+import { Course, Section, Student, Enrollment, Override, ApiLog, AuthUser, LoginResponse } from '../types';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'https://unienroll-backend.team03-enrollment.workers.dev';
@@ -208,6 +208,10 @@ export const api = {
     });
   },
 
+  async swapSection(enrollmentId: number, newSectionId: number) {
+    return this.updateEnrollment(enrollmentId, { section_id: newSectionId });
+  },
+
   async deleteEnrollment(enrollmentId: number) {
     return request<{ enrollment_id: number; status: string; freed_seats: number }>(
       `/api/enrollments/${enrollmentId}`,
@@ -215,6 +219,30 @@ export const api = {
         method: 'DELETE',
       }
     );
+  },
+
+  async withdrawEnrollment(enrollmentId: number, reason?: string) {
+    return request<Enrollment>(`/api/enrollments/${enrollmentId}/withdraw`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async getOverrides() {
+    return request<Override[]>('/api/overrides');
+  },
+
+  async createOverride(data: {
+    student_id?: number;
+    student_code?: string;
+    section_id: number;
+    override_type: 'CAPACITY' | 'PREREQUISITE' | 'LATE_ADD' | 'SPECIAL_PERMISSION';
+    reason: string;
+  }) {
+    return request<any>('/api/overrides', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   async seedDatabase() {
