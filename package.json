@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "backend:dev": "wrangler dev",
     "backend:deploy": "wrangler deploy",
+    "frontend:deploy": "next build && wrangler pages deploy out --project-name unienroll-frontend --branch preproduct",
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 execute unienroll-d1 --local --file=./src/backend/db/schema.sql",
     "db:seed:local": "wrangler d1 execute unienroll-d1 --local --file=./src/backend/db/seed.sql",
