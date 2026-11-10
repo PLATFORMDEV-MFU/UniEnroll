@@ -5,16 +5,16 @@
 > **เวลาต่อกลุ่ม:** ประมาณ 5–10 นาที  
 > **Repository:** `https://github.com/PLATFORMDEV-MFU/UniEnroll`  
 > **Production Backend:** `https://unienroll-backend.team03-enrollment.workers.dev`  
-> **Production Frontend:** `[ใส่ Cloud URL ก่อนพรี — ห้ามใช้ localhost/ngrok]`
+> **Production Frontend:** `https://unienroll-frontend.pages.dev`
 
 ---
 
 ## 0. จุดที่ต้องปิดก่อนเข้าห้องประเมิน
 
-- [ ] **Deploy Frontend ขึ้น Cloud** และใส่ URL ด้านบน — จาก repo ปัจจุบันยืนยันได้เฉพาะ Backend Worker; requirement ไม่รับ localhost/ngrok
-- [ ] ตั้ง `NEXT_PUBLIC_API_URL=https://unienroll-backend.team03-enrollment.workers.dev` ใน Frontend production environment
-- [ ] เปิด Frontend production URL จากเครื่องอื่น/Incognito และทดสอบ Login จริง
-- [ ] Commit และ push source ล่าสุด — ปัจจุบัน branch `preproduct` มีไฟล์ staged ที่ยังไม่อยู่ใน commit `fa163dd`
+- [x] **Deploy Frontend ขึ้น Cloudflare Pages** — `https://unienroll-frontend.pages.dev`
+- [x] Frontend ใช้ Production API `https://unienroll-backend.team03-enrollment.workers.dev`
+- [x] เปิด Frontend production URL จาก browser session แยกแล้ว — หน้า Login ตอบ HTTP 200
+- [x] Commit และ push source ล่าสุดแล้ว — `dfd87ca` อยู่ทั้ง `preproduct` และ `origin/preproduct`
 - [ ] ซ้อมบัญชี Team 01 ใหม่หนึ่งรอบ: สมัคร → Consent → Login UniEnroll → Identity ผ่าน → ลงทะเบียน
 - [ ] ตรวจ Team 01 และ UniEnroll health ก่อนถึงคิว
 - [ ] เตรียมบัญชีสำรองที่เปิด Consent แล้ว แต่ห้ามใส่รหัสผ่านไว้ในเอกสารหรือสไลด์
