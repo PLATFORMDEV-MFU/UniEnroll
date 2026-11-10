@@ -613,8 +613,8 @@ curl https://unienroll-backend.team03-enrollment.workers.dev/health
 
 | Requirement | Evidence | สถานะ |
 |---|---|---|
-| System completion & cloud | Cloudflare Worker + D1; `/health` HTTP 200 | **Backend verified; Frontend Cloud URL ต้องยืนยัน** |
-| Key features & Happy Path | Login, claims gate, enroll, schedule, rule engine | Implemented; ซ้อม production ก่อนพรี |
+| System completion & cloud | Cloudflare Pages + Worker + D1; `/health` HTTP 200 | **Frontend และ Backend production verified** |
+| Key features & Happy Path | Login, claims gate, enroll, schedule, rule engine | Login, Identity และ Enrollment production verified |
 | Cross-group integration | Team 01 REST API + consent + live claims | Implemented และ live backend response verified |
 | Development & AI evidence | Architecture, Git, tests, Hermes, Workers AI | ต้อง commit/push และกรอก team contribution |
 | Security & PDPA | JWT, PBKDF2, RBAC, consent, prepared statements, HMAC | Implemented; แสดง source + live denial case |
@@ -637,3 +637,193 @@ curl https://unienroll-backend.team03-enrollment.workers.dev/health
 - [ ] Test result พร้อมเปิด
 - [ ] Team 01 พร้อมออนไลน์
 - [ ] สมาชิกทุกคนรู้ว่าจะพูดส่วนไหน
+
+---
+
+# 8. คำตอบครบ 8 เกณฑ์แบบพูดได้ทันที
+
+## 1) Complete & Cloud Deploy
+
+### คำตอบ
+
+> “ระบบ UniEnroll ทำงานครบและ deploy บน Cloudflare ครับ Frontend เป็น Next.js static site บน Cloudflare Pages, Backend เป็น Hono API บน Cloudflare Workers และ Database เป็น Cloudflare D1 ผู้ประเมินสามารถเปิด Production URL และใช้งาน Login, ดูรายวิชา, ลงทะเบียน และดู My Schedule ได้จริง”
+
+### หลักฐานที่เปิด
+
+- Frontend: `https://unienroll-frontend.pages.dev`
+- Backend: `https://unienroll-backend.team03-enrollment.workers.dev`
+- Health: `https://unienroll-backend.team03-enrollment.workers.dev/health`
+- Config: `wrangler.jsonc`
+- Worker entrypoint: `src/backend/index.ts`
+
+## 2) Demo Features & Happy Path
+
+### คำตอบ
+
+> “Happy Path เริ่มจากนักศึกษาใช้บัญชี Team 01 Login เข้า UniEnroll ระบบตรวจ Identity และ Consent จากนั้นแสดง section ที่ลงทะเบียนได้ นักศึกษากด Register ระบบตรวจ prerequisite, ตารางชน, credit limit, duplicate และ capacity เมื่อผ่านจึงบันทึกลง D1 และแสดงใน My Schedule”
+
+### ลำดับ Demo
+
+```text
+Team 01 account
+→ Enrollment consent: Sharing
+→ Login UniEnroll
+→ Student Identity: verified
+→ เลือก section ที่ว่าง
+→ Register Section
+→ My Schedule
+```
+
+### หลักฐานที่เปิด
+
+- UI flow: `src/app/page.tsx`
+- Enrollment API: `src/backend/routes/enrollments.ts`
+- Rule engine: `src/backend/lib/enrollment-rule-engine.ts`
+
+## 3) Integrate with at Least 1 Group
+
+### คำตอบ
+
+> “เราเชื่อมกับ Team 01 Student Identity จริงผ่าน HTTPS REST API ครับ ไม่ใช่ mock การ Login ใช้ `/auth/login` และ `/me` ส่วนการตรวจ Identity และ Consent ใช้ `/students/{studentId}/claims` โดย UniEnroll Worker เป็นผู้เรียก Team 01 แบบ server-to-server”
+
+### API Flow
+
+```text
+Browser → UniEnroll Worker
+             ├─ POST Team 01 /auth/login
+             ├─ GET  Team 01 /me
+             └─ GET  Team 01 /students/{studentId}/claims
+```
+
+### หลักฐานที่เปิด
+
+- `src/backend/lib/student-identity-client.ts`
+- `src/backend/routes/auth.ts`
+- `src/backend/routes/external.ts`
+- หน้า Team 01 Consent ที่แสดง `Enrollment: Sharing`
+- หน้า UniEnroll ที่แสดง `Student Identity · Team 01`
+
+## 4) Development Process & AI
+
+### คำตอบ
+
+> “เราใช้ Git แยกงานบน branch `preproduct` และตรวจการเปลี่ยนแปลงด้วย tests, TypeScript, ESLint และ production build ก่อน deploy เราใช้ Hermes Agent ช่วยวิเคราะห์ source, เขียน tests และ debug แต่สมาชิกตรวจ diff และผล execution จริง ส่วน Workers AI ในระบบใช้เฉพาะช่วยเขียนคำอธิบายผล ไม่ได้ตัดสินว่านักศึกษาลงทะเบียนได้หรือไม่”
+
+### ถ้าถามว่า AI ทำอะไร
+
+- **Hermes Agent:** ช่วยพัฒนาและตรวจสอบ แต่ไม่แทนการ review ของสมาชิก
+- **Workers AI:** เรียบเรียง failed-rule explanation
+- **Enrollment decision:** มาจาก deterministic rule engine เท่านั้น
+- **AI ล่ม:** ใช้ deterministic fallback ระบบยังอธิบายผลได้
+
+### หลักฐานที่เปิด
+
+- `git log --oneline --decorate -10`
+- `src/backend/lib/decision-explainer.ts`
+- `src/backend/lib/enrollment-rule-engine.ts`
+
+## 5) Security & PDPA
+
+### คำตอบ
+
+> “ด้าน PDPA นักศึกษาต้องให้ Consent `Enrollment / profile:read` ก่อน UniEnroll อ่าน claims เราใช้ข้อมูลเท่าที่จำเป็นและไม่เก็บรหัสผ่านหรือ access token ของ Team 01 ด้าน Security ใช้ HTTPS, JWT, RBAC, prepared statements, idempotency และเก็บ service key ใน Cloudflare Worker Secret ไม่ส่งไปที่ browser”
+
+### ถ้าถามว่าป้องกันอะไรบ้าง
+
+- Password/Team 01 token: ใช้ชั่วคราวและไม่บันทึก
+- API secret: อยู่ใน Wrangler Secret
+- Unauthorized request: JWT middleware ตอบ `401`
+- Permission: Student/Staff RBAC
+- SQL injection: D1 prepared statement + `.bind()`
+- กดลงทะเบียนซ้ำ: `Idempotency-Key` และ database constraints
+- แย่งที่นั่งสุดท้าย: atomic D1 capacity update
+- Partner ล่มหรือ schema ผิด: fail closed
+
+### หลักฐานที่เปิด
+
+- `src/backend/middleware/auth.ts`
+- `src/backend/lib/student-identity-client.ts`
+- `src/backend/middleware/idempotency.ts`
+- `src/backend/db/schema.sql`
+
+## 6) Testing & Quality Assurance
+
+### คำตอบ
+
+> “เรามี automated tests ครอบคลุม Happy Path, authentication, partner response, prerequisite, schedule conflict, credit limit, duplicate, idempotency, webhook retry และ capacity concurrency นอกจากนี้ยังตรวจ typecheck, lint และ production build ก่อน deploy”
+
+### คำสั่งที่เปิดหรือรัน
+
+```bash
+pnpm run test
+pnpm run typecheck
+pnpm run lint
+pnpm run build
+```
+
+### Test สำคัญที่ควรพูด
+
+- รหัสผ่าน Team 01 ผิด → `401` และไม่สร้าง local student
+- Team 01 subject ไม่ตรง → fail closed
+- ไม่มี Consent → ลงทะเบียนไม่ได้
+- 60 requests แย่ง 50 ที่นั่ง → ไม่เกิน capacity
+- Webhook retry → ใช้ `event_id` เดิม
+
+### หลักฐานที่เปิด
+
+- `tests/student-identity.test.ts`
+- `tests/auth-security.test.ts`
+- `tests/enrollment-rules.test.ts`
+- `tests/capacity-concurrency.test.ts`
+- `tests/webhook-retry.test.ts`
+
+## 7) Explain Code, Modify & Redeploy
+
+### คำตอบอธิบายโค้ด
+
+> “โค้ดแบ่งเป็น Frontend API client, Hono routes, authentication middleware, partner client, rule engine และ D1 persistence ครับ `index.ts` mount route, `auth.ts` ควบคุม Login, `student-identity-client.ts` เชื่อม Team 01, `external.ts` ตรวจ claims และ `enrollments.ts` ตรวจ rules ก่อนบันทึก D1”
+
+### ลำดับไฟล์ที่เปิด
+
+1. `src/lib/api.ts` — Frontend เรียก Backend
+2. `src/backend/index.ts` — Mount API routes
+3. `src/backend/routes/auth.ts` — Login/JIT/JWT
+4. `src/backend/lib/student-identity-client.ts` — Team 01 API client
+5. `src/backend/routes/external.ts` — Claims และ Consent gate
+6. `src/backend/routes/enrollments.ts` — Enrollment flow
+7. `src/backend/lib/enrollment-rule-engine.ts` — Rules
+
+### ถ้าให้แก้และ Redeploy สด
+
+```bash
+pnpm run test
+pnpm run typecheck
+pnpm run build
+pnpm exec wrangler deploy
+curl https://unienroll-backend.team03-enrollment.workers.dev/health
+```
+
+ถ้าแก้ Frontend:
+
+```bash
+pnpm run frontend:deploy
+```
+
+> ก่อน deploy ให้อธิบายว่าแก้อะไรและผลที่ผู้ใช้จะเห็น ห้ามแก้ secret, schema หรือ reset Production D1 ใน Live Evaluation
+
+## 8) Final Evaluation & Full Attendance
+
+### คำตอบ
+
+> “สมาชิกทุกคนเข้าร่วมการประเมินและแบ่งส่วนรับผิดชอบชัดเจนครับ แต่ละคนสามารถอธิบายงานของตนเอง เปิด source ที่เกี่ยวข้อง ตอบคำถาม และช่วยทำ live modification หรือ redeploy ได้”
+
+### สิ่งที่ต้องทำก่อนเข้าห้อง
+
+- กรอกชื่อสมาชิกและหน้าที่ในตาราง Team Contribution
+- แบ่งว่าใคร Demo, ใครอธิบาย API, ใครอธิบาย Security/Testing
+- ทุกคนรู้ Production URL และไฟล์ที่ตนเองต้องเปิด
+- ทุกคนอยู่ครบตลอด Final Evaluation
+
+## คำตอบสรุป 30 วินาทีครอบคลุมทั้งงาน
+
+> “UniEnroll เป็นระบบลงทะเบียนที่ deploy จริงบน Cloudflare Pages, Workers และ D1 ครับ นักศึกษา Login ผ่าน Student Identity Team 01 ซึ่งเป็น REST API integration จริงและมี Consent ตาม PDPA ระบบตรวจ prerequisite, ตารางชน, credit limit, duplicate และ capacity แบบ deterministic ก่อนบันทึก มี JWT, RBAC, prepared statements และ automated tests รองรับ เราใช้ Git และ AI ช่วยในกระบวนการพัฒนา แต่ AI ไม่ได้เป็นผู้ตัดสิน enrollment และระบบสามารถ test, modify และ redeploy ได้จาก source นี้ครับ”
