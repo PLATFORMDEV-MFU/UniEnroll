@@ -2,10 +2,12 @@ import { MiddlewareHandler } from 'hono';
 import { verify } from 'hono/jwt';
 import { AppEnv, AuthPayload } from '../types';
 
-export const DEFAULT_JWT_SECRET = 'unienroll-dev-secret-change-in-production-2026';
-
 export function getJwtSecret(env?: { JWT_SECRET?: string }): string {
-  return env?.JWT_SECRET || DEFAULT_JWT_SECRET;
+  const secret = env?.JWT_SECRET?.trim();
+  if (!secret || secret.length < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters');
+  }
+  return secret;
 }
 
 /**
@@ -13,17 +15,6 @@ export function getJwtSecret(env?: { JWT_SECRET?: string }): string {
  * Attaches verified payload to `c.set('user', payload)`.
  */
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
-  // Allow partner service with X-Partner-Key
-  const partnerKey = c.req.header('X-Partner-Key');
-  if (partnerKey && (partnerKey === 'partner-secret-key-2026' || partnerKey === 'team-04-timetable-key')) {
-    c.set('user', {
-      sub: 1,
-      student_code: 'PARTNER',
-      role: 'STAFF'
-    });
-    return await next();
-  }
-
   const authHeader = c.req.header('Authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

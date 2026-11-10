@@ -200,7 +200,7 @@ export const api = {
 
   async updateEnrollment(
     enrollmentId: number,
-    data: { section_id?: number; status?: 'ENROLLED' | 'DROPPED' }
+    data: { section_id: number }
   ) {
     return request<Enrollment>(`/api/enrollments/${enrollmentId}`, {
       method: 'PATCH',

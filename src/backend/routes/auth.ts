@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
 import { AppEnv, Student } from '../types';
-import { hashPassword, verifyPassword } from '../lib/crypto';
+import { verifyPassword } from '../lib/crypto';
 import { authMiddleware, getJwtSecret } from '../middleware/auth';
 
 export const authRoutes = new Hono<AppEnv>();
@@ -49,19 +49,6 @@ authRoutes.post('/login', async (c) => {
     isValid = await verifyPassword(password, student.password_hash);
   }
 
-  // Fallback demo support: if student has no password_hash or default password matches student_code
-  if (!isValid && password === student.student_code) {
-    isValid = true;
-    // Upgrade / update password hash in background
-    try {
-      const newHash = await hashPassword(password);
-      await c.env.DB.prepare('UPDATE students SET password_hash = ? WHERE id = ?')
-        .bind(newHash, student.id)
-        .run();
-    } catch {
-      // Ignore background upgrade error
-    }
-  }
 
   if (!isValid) {
     return c.json(

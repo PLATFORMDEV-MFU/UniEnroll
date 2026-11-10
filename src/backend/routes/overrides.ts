@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { AppEnv, CreateOverrideDTO, Override, Section, Student } from '../types';
 import { authMiddleware } from '../middleware/auth';
-import { dispatchWebhook } from '../lib/webhook-sender';
+import { publishEnrollmentChange } from '../lib/webhook-sender';
 
 export const overrideRoutes = new Hono<AppEnv>();
 
@@ -143,19 +143,17 @@ overrideRoutes.post('/', async (c) => {
 
   const now = new Date().toISOString();
 
-  // If section is at or above capacity, expand capacity atomically to accommodate override
-  const isAtCapacity = section.enrolled_count >= section.max_capacity;
-  const updateSectionStmt = isAtCapacity
-    ? c.env.DB.prepare(`
-        UPDATE sections 
-        SET max_capacity = max_capacity + 1, enrolled_count = enrolled_count + 1 
-        WHERE id = ?
-      `).bind(section_id)
-    : c.env.DB.prepare(`
-        UPDATE sections 
-        SET enrolled_count = enrolled_count + 1 
-        WHERE id = ?
-      `).bind(section_id);
+  // Decide whether to expand from the values visible at commit time, not from
+  // the earlier read. This keeps simultaneous staff overrides atomic.
+  const updateSectionStmt = c.env.DB.prepare(`
+    UPDATE sections
+    SET max_capacity = CASE
+          WHEN enrolled_count >= max_capacity THEN enrolled_count + 1
+          ELSE max_capacity
+        END,
+        enrolled_count = enrolled_count + 1
+    WHERE id = ?
+  `).bind(section_id);
 
   // Insert or update enrollment as OVERRIDDEN
   const insertEnrollmentStmt = c.env.DB.prepare(`
@@ -188,11 +186,11 @@ overrideRoutes.post('/', async (c) => {
 
   // Dispatch outgoing webhook: enrollment.overridden
   try {
-    const webhookTarget = 'https://unienroll-backend.team03-enrollment.workers.dev/api/mock-partner/webhook';
-    await dispatchWebhook(c.env.DB, webhookTarget, 'enrollment.overridden', {
+    await publishEnrollmentChange(c.env, 'enrollment.overridden', {
       enrollment_id: newEnrollmentId,
       override_id: newOverrideId,
       student_id: student.id,
+      section_id,
       student_code: student.student_code,
       course_code: section.course_code,
       section_number: section.section_number,

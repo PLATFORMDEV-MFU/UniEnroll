@@ -2,14 +2,16 @@ import { Hono } from 'hono';
 import { AppEnv, Enrollment, Section, Student, CreateEnrollmentDTO, UpdateEnrollmentDTO } from '../types';
 import { authMiddleware } from '../middleware/auth';
 import { idempotencyMiddleware } from '../middleware/idempotency';
-import { dispatchWebhook } from '../lib/webhook-sender';
+import { publishEnrollmentChange } from '../lib/webhook-sender';
+import { evaluateEnrollmentRules } from '../lib/enrollment-rule-engine';
+import { explainRuleDecision } from '../lib/decision-explainer';
 
 export const enrollmentRoutes = new Hono<AppEnv>();
 
 // Enforce JWT authentication for all enrollment routes
 enrollmentRoutes.use('*', authMiddleware);
 
-// GET /api/enrollments/me (fetch current student active enrollments)
+// GET /api/enrollments/me (fetch current student's active and historical enrollments)
 enrollmentRoutes.get('/me', async (c) => {
   const user = c.get('user');
   const studentId = (user && user.sub) ? user.sub : 1;
@@ -36,8 +38,8 @@ enrollmentRoutes.get('/me', async (c) => {
     JOIN students st ON e.student_id = st.id
     JOIN sections s ON e.section_id = s.id
     JOIN courses c ON s.course_id = c.id
-    WHERE e.student_id = ? AND e.status IN ('ENROLLED', 'OVERRIDDEN')
-    ORDER BY c.course_code ASC
+    WHERE e.student_id = ?
+    ORDER BY e.updated_at DESC, e.id DESC
   `;
 
   const { results } = await c.env.DB.prepare(query).bind(studentId).all<Enrollment>();
@@ -230,7 +232,38 @@ enrollmentRoutes.post('/', idempotencyMiddleware, async (c) => {
     }
   }
 
-  // Business Rule Step 4: Check Seat Capacity (BR-01 Strict Capacity Protection)
+  // Business Rule Step 4: deterministic academic rules. AI may explain the
+  // result, but it never changes eligibility.
+  const ruleDecision = await evaluateEnrollmentRules(c.env.DB, student_id, section_id);
+  if (!ruleDecision.eligible) {
+    const explanation = await explainRuleDecision(
+      ruleDecision.failed_rules,
+      c.env.AI_EXPLANATIONS_ENABLED === 'false' ? undefined : c.env.AI,
+      c.env.AI_EXPLANATION_MODEL
+    );
+    await c.env.DB.prepare(`
+      INSERT INTO rule_decisions
+        (student_id, section_id, eligible, failed_rules, explanation, explanation_source)
+      VALUES (?, ?, 0, ?, ?, ?)
+    `).bind(
+      student_id,
+      section_id,
+      JSON.stringify(ruleDecision.failed_rules),
+      explanation.explanation,
+      explanation.explanation_source
+    ).run();
+
+    return c.json({
+      success: false,
+      error_code: ruleDecision.failed_rules[0].code,
+      error: explanation.explanation,
+      explanation: explanation.explanation,
+      explanation_source: explanation.explanation_source,
+      failed_rules: ruleDecision.failed_rules,
+    }, 422);
+  }
+
+  // Business Rule Step 5: Check Seat Capacity (BR-01 Strict Capacity Protection)
   if (section.enrolled_count >= section.max_capacity) {
     return c.json({
       success: false,
@@ -239,7 +272,9 @@ enrollmentRoutes.post('/', idempotencyMiddleware, async (c) => {
       details: {
         total_capacity: section.max_capacity,
         enrolled_count: section.enrolled_count,
-        available_seats: 0
+        available_seats: 0,
+        contention_policy: 'FIRST_COMMITTED_REQUEST_WINS',
+        retryable: false,
       }
     }, 422);
   }
@@ -267,12 +302,24 @@ enrollmentRoutes.post('/', idempotencyMiddleware, async (c) => {
     newEnrollmentId = Number(batchResults[1].meta.last_row_id);
   } catch (dbErr: any) {
     const errMsg = String(dbErr?.message || dbErr);
+    if (errMsg.includes('ERR_DUPLICATE_COURSE_ENROLLMENT')) {
+      return c.json({
+        success: false,
+        error_code: 'ERR_DUPLICATE_COURSE_ENROLLMENT',
+        error: `Student ${student.student_code} already has an active section of ${section.course_code} in ${section.semester}`,
+      }, 409);
+    }
     if (errMsg.includes('CHECK') || errMsg.includes('enrolled_count')) {
       return c.json({
         success: false,
         error_code: 'ERR_CAPACITY_FULL',
-        error: `Section ${section.section_number} for ${section.course_code} is full (capacity limit enforced by database constraint)`,
-        details: { total_capacity: section.max_capacity, available_seats: 0 }
+        error: `The last available seat in ${section.course_code} ${section.section_number} was taken by another request that committed first. Your enrollment was not created.`,
+        details: {
+          total_capacity: section.max_capacity,
+          available_seats: 0,
+          contention_policy: 'FIRST_COMMITTED_REQUEST_WINS',
+          retryable: false,
+        }
       }, 422);
     }
     if (errMsg.includes('UNIQUE') || errMsg.includes('idx_unique_active_enrollment')) {
@@ -312,10 +359,10 @@ enrollmentRoutes.post('/', idempotencyMiddleware, async (c) => {
 
   // Dispatch outgoing webhook to Partner (A5 Box 4: Webhook Sender)
   try {
-    const webhookTarget = 'https://unienroll-backend.team03-enrollment.workers.dev/api/mock-partner/webhook';
-    await dispatchWebhook(c.env.DB, webhookTarget, 'enrollment.created', {
+    await publishEnrollmentChange(c.env, 'enrollment.created', {
       enrollment_id: newEnrollmentId,
       student_id,
+      section_id,
       student_code: student.student_code,
       course_code: section.course_code,
       section_number: section.section_number,
@@ -341,11 +388,33 @@ enrollmentRoutes.patch('/:id', async (c) => {
     return c.json({ success: false, error: 'Invalid enrollment ID' }, 400);
   }
 
-  let body: UpdateEnrollmentDTO;
+  let rawBody: unknown;
   try {
-    body = await c.req.json();
+    rawBody = await c.req.json();
   } catch (err) {
     return c.json({ success: false, error: 'Invalid JSON request body' }, 400);
+  }
+
+  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    return c.json({
+      success: false,
+      error_code: 'ERR_INVALID_UPDATE',
+      error: 'PATCH only supports a positive integer section_id for section swaps.',
+    }, 400);
+  }
+  const body = rawBody as UpdateEnrollmentDTO;
+  const bodyKeys = Object.keys(rawBody);
+  if (
+    bodyKeys.length !== 1
+    || bodyKeys[0] !== 'section_id'
+    || !Number.isInteger(body.section_id)
+    || body.section_id <= 0
+  ) {
+    return c.json({
+      success: false,
+      error_code: 'ERR_INVALID_UPDATE',
+      error: 'PATCH only supports a positive integer section_id for section swaps.',
+    }, 400);
   }
 
   const existing = await c.env.DB.prepare(
@@ -361,10 +430,26 @@ enrollmentRoutes.patch('/:id', async (c) => {
     return c.json({ success: false, error: 'Forbidden: You can only modify your own enrollments' }, 403);
   }
 
+  if (!['ENROLLED', 'OVERRIDDEN'].includes(existing.status)) {
+    return c.json({
+      success: false,
+      error_code: 'ERR_ENROLLMENT_CHANGED',
+      error: 'Only an active enrollment can be swapped.',
+    }, 409);
+  }
+
+  if (body.section_id === existing.section_id) {
+    return c.json({
+      success: false,
+      error_code: 'ERR_NO_CHANGE',
+      error: 'The target section must differ from the current section.',
+    }, 409);
+  }
+
   const now = new Date().toISOString();
 
-  // Scenario A: Section Swap (target_section_id or section_id provided)
-  if (body.section_id && body.section_id !== existing.section_id) {
+  // Section swap
+  if (body.section_id !== existing.section_id) {
     const targetSectionId = body.section_id;
 
     // Check target section exists
@@ -398,26 +483,40 @@ enrollmentRoutes.patch('/:id', async (c) => {
       }, 422);
     }
 
-    // Batch operations: update enrollment, decrement old section, increment new section
+    // The database trigger moves both seat counters in the same transaction as
+    // this compare-and-swap update. A full target rolls the entire update back.
     const updateEnrollStmt = c.env.DB.prepare(`
-      UPDATE enrollments 
-      SET section_id = ?, updated_at = ? 
+      UPDATE enrollments
+      SET section_id = ?, updated_at = ?
       WHERE id = ?
-    `).bind(targetSectionId, now, id);
+        AND section_id = ?
+        AND status IN ('ENROLLED', 'OVERRIDDEN')
+    `).bind(targetSectionId, now, id, existing.section_id);
 
-    const decOldSectionStmt = c.env.DB.prepare(`
-      UPDATE sections 
-      SET enrolled_count = MAX(0, enrolled_count - 1) 
-      WHERE id = ?
-    `).bind(existing.section_id);
-
-    const incNewSectionStmt = c.env.DB.prepare(`
-      UPDATE sections 
-      SET enrolled_count = enrolled_count + 1 
-      WHERE id = ?
-    `).bind(targetSectionId);
-
-    await c.env.DB.batch([updateEnrollStmt, decOldSectionStmt, incNewSectionStmt]);
+    let swapCommitted = false;
+    try {
+      const swapResult = await updateEnrollStmt.run();
+      // D1 may include trigger side effects in meta.changes; zero alone means
+      // the enrollment compare-and-swap lost the race.
+      swapCommitted = (swapResult.meta.changes ?? 0) > 0;
+    } catch (dbErr: any) {
+      const errMsg = String(dbErr?.message || dbErr);
+      if (errMsg.includes('CHECK') || errMsg.includes('enrolled_count')) {
+        return c.json({
+          success: false,
+          error_code: 'ERR_CAPACITY_FULL',
+          error: `Cannot swap: target section ${targetSection.section_number} became full before this request committed`,
+        }, 422);
+      }
+      throw dbErr;
+    }
+    if (!swapCommitted) {
+      return c.json({
+        success: false,
+        error_code: 'ERR_ENROLLMENT_CHANGED',
+        error: 'This enrollment was already changed by another request.',
+      }, 409);
+    }
 
     const updatedRecord = await c.env.DB.prepare(`
       SELECT 
@@ -432,42 +531,23 @@ enrollmentRoutes.patch('/:id', async (c) => {
       WHERE e.id = ?
     `).bind(id).first<Enrollment>();
 
+    try {
+      await publishEnrollmentChange(c.env, 'enrollment.swapped', {
+        enrollment_id: id,
+        student_id: existing.student_id,
+        previous_section_id: existing.section_id,
+        section_id: targetSectionId,
+        status: existing.status,
+      });
+    } catch (whErr) {
+      console.error('Failed to dispatch swap webhook:', whErr);
+    }
+
     return c.json({
       success: true,
       message: `Section swapped successfully from section ${existing.section_id} to ${targetSectionId}`,
       data: updatedRecord
     });
-  }
-
-  // Scenario B: Status Update (e.g. DROPPED or ENROLLED)
-  if (body.status && body.status !== existing.status) {
-    if (body.status === 'DROPPED' && existing.status === 'ENROLLED') {
-      const updateStmt = c.env.DB.prepare(`
-        UPDATE enrollments SET status = 'DROPPED', updated_at = ? WHERE id = ?
-      `).bind(now, id);
-
-      const decSectionStmt = c.env.DB.prepare(`
-        UPDATE sections SET enrolled_count = MAX(0, enrolled_count - 1) WHERE id = ?
-      `).bind(existing.section_id);
-
-      await c.env.DB.batch([updateStmt, decSectionStmt]);
-    } else if (body.status === 'ENROLLED' && existing.status === 'DROPPED') {
-      // Re-enroll: check capacity
-      const section = await c.env.DB.prepare('SELECT * FROM sections WHERE id = ?').bind(existing.section_id).first<Section>();
-      if (section && section.enrolled_count >= section.max_capacity) {
-        return c.json({ success: false, error_code: 'ERR_CAPACITY_FULL', error: 'Section is now full' }, 422);
-      }
-
-      const updateStmt = c.env.DB.prepare(`
-        UPDATE enrollments SET status = 'ENROLLED', updated_at = ? WHERE id = ?
-      `).bind(now, id);
-
-      const incSectionStmt = c.env.DB.prepare(`
-        UPDATE sections SET enrolled_count = enrolled_count + 1 WHERE id = ?
-      `).bind(existing.section_id);
-
-      await c.env.DB.batch([updateStmt, incSectionStmt]);
-    }
   }
 
   const result = await c.env.DB.prepare('SELECT * FROM enrollments WHERE id = ?').bind(id).first<Enrollment>();
@@ -504,16 +584,51 @@ enrollmentRoutes.delete('/:id', async (c) => {
 
   // If currently active (ENROLLED or OVERRIDDEN), decrement seat count
   const wasActive = existing.status === 'ENROLLED' || existing.status === 'OVERRIDDEN';
-  if (wasActive) {
+  if (!wasActive) {
+    return c.json({
+      success: false,
+      error_code: 'ERR_ENROLLMENT_NOT_ACTIVE',
+      error: `Enrollment ID ${id} is already ${existing.status.toLowerCase()}`,
+    }, 409);
+  }
+
+  {
     const updateEnrollStmt = c.env.DB.prepare(`
-      UPDATE enrollments SET status = 'DROPPED', updated_at = ? WHERE id = ?
+      UPDATE enrollments
+      SET status = 'DROPPED', updated_at = ?
+      WHERE id = ? AND status IN ('ENROLLED', 'OVERRIDDEN')
     `).bind(now, id);
 
     const decSectionStmt = c.env.DB.prepare(`
-      UPDATE sections SET enrolled_count = MAX(0, enrolled_count - 1) WHERE id = ?
-    `).bind(existing.section_id);
+      UPDATE sections
+      SET enrolled_count = enrolled_count - 1
+      WHERE id = (
+        SELECT section_id FROM enrollments
+        WHERE id = ? AND status IN ('ENROLLED', 'OVERRIDDEN')
+      )
+        AND enrolled_count > 0
+    `).bind(id);
 
-    await c.env.DB.batch([updateEnrollStmt, decSectionStmt]);
+    const batchResults = await c.env.DB.batch([decSectionStmt, updateEnrollStmt]);
+    if ((batchResults[1].meta.changes ?? 0) === 0) {
+      return c.json({
+        success: false,
+        error_code: 'ERR_ENROLLMENT_NOT_ACTIVE',
+        error: `Enrollment ID ${id} was already changed by another request`,
+      }, 409);
+    }
+
+    try {
+      await publishEnrollmentChange(c.env, 'enrollment.dropped', {
+        enrollment_id: id,
+        student_id: existing.student_id,
+        section_id: existing.section_id,
+        status: 'DROPPED',
+        dropped_at: now,
+      });
+    } catch (whErr) {
+      console.error('Failed to dispatch drop webhook:', whErr);
+    }
   }
 
   return c.json({
@@ -566,9 +681,9 @@ enrollmentRoutes.post('/:id/withdraw', async (c) => {
   if (existing.status !== 'ENROLLED' && existing.status !== 'OVERRIDDEN') {
     return c.json({
       success: false,
-      error_code: 'ERR_INVALID_STATUS_FOR_WITHDRAWAL',
+      error_code: 'ERR_ENROLLMENT_NOT_ACTIVE',
       error: `Cannot withdraw an enrollment that is already ${existing.status}`
-    }, 400);
+    }, 409);
   }
 
   const now = new Date().toISOString();
@@ -578,21 +693,34 @@ enrollmentRoutes.post('/:id/withdraw', async (c) => {
   const updateEnrollStmt = c.env.DB.prepare(`
     UPDATE enrollments 
     SET status = 'WITHDRAWN', withdrawal_reason = ?, updated_at = ? 
-    WHERE id = ?
+    WHERE id = ? AND status IN ('ENROLLED', 'OVERRIDDEN')
   `).bind(reason, now, id);
 
   const decSectionStmt = c.env.DB.prepare(`
-    UPDATE sections SET enrolled_count = MAX(0, enrolled_count - 1) WHERE id = ?
-  `).bind(existing.section_id);
+    UPDATE sections
+    SET enrolled_count = enrolled_count - 1
+    WHERE id = (
+      SELECT section_id FROM enrollments
+      WHERE id = ? AND status IN ('ENROLLED', 'OVERRIDDEN')
+    )
+      AND enrolled_count > 0
+  `).bind(id);
 
-  await c.env.DB.batch([updateEnrollStmt, decSectionStmt]);
+  const batchResults = await c.env.DB.batch([decSectionStmt, updateEnrollStmt]);
+  if ((batchResults[1].meta.changes ?? 0) === 0) {
+    return c.json({
+      success: false,
+      error_code: 'ERR_ENROLLMENT_NOT_ACTIVE',
+      error: `Enrollment ID ${id} was already changed by another request`,
+    }, 409);
+  }
 
   // Dispatch outgoing webhook: enrollment.withdrawn (A5 Box 4)
   try {
-    const webhookTarget = 'https://unienroll-backend.team03-enrollment.workers.dev/api/mock-partner/webhook';
-    await dispatchWebhook(c.env.DB, webhookTarget, 'enrollment.withdrawn', {
+    await publishEnrollmentChange(c.env, 'enrollment.withdrawn', {
       enrollment_id: id,
       student_id: existing.student_id,
+      section_id: existing.section_id,
       student_code: existing.student_code,
       course_code: existing.course_code,
       section_number: existing.section_number,

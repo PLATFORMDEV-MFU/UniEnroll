@@ -28,7 +28,9 @@
       ]
     },
     "types": [
-      "@cloudflare/workers-types"
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-plugin/types",
+      "node"
     ]
   },
   "include": [

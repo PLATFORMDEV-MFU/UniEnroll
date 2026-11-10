@@ -1,6 +1,9 @@
 -- UniEnroll Seed Data
 
 -- Clear existing data
+DELETE FROM rule_decisions;
+DELETE FROM student_course_history;
+DELETE FROM course_prerequisites;
 DELETE FROM overrides;
 DELETE FROM enrollments;
 DELETE FROM sections;
@@ -8,7 +11,7 @@ DELETE FROM courses;
 DELETE FROM students;
 
 -- Reset SQLite sequence if exists
-DELETE FROM sqlite_sequence WHERE name IN ('courses', 'sections', 'students', 'enrollments', 'overrides');
+DELETE FROM sqlite_sequence WHERE name IN ('courses', 'sections', 'students', 'enrollments', 'student_course_history', 'rule_decisions', 'overrides');
 
 -- 1. Insert Courses
 INSERT INTO courses (id, course_code, title, credits, department) VALUES
@@ -53,6 +56,16 @@ INSERT INTO enrollments (id, student_id, section_id, status, enrolled_at, update
 -- Student 1 enrolled in SE201 SEC01
 (5, 1, 5, 'ENROLLED', '2026-08-15 09:30:00', '2026-08-15 09:30:00');
 
--- 5. Initial Seed Override Log
+-- 5. Academic rules and completed-course evidence
+INSERT INTO course_prerequisites (course_id, prerequisite_course_id, minimum_grade) VALUES
+(2, 1, 'C'),
+(3, 2, 'C');
+
+INSERT INTO student_course_history (student_id, course_id, grade, status, completed_at) VALUES
+(2, 1, 'B', 'COMPLETED', '2026-05-20 00:00:00'),
+(3, 1, 'B+', 'COMPLETED', '2026-05-20 00:00:00'),
+(4, 1, 'A', 'COMPLETED', '2026-05-20 00:00:00');
+
+-- 6. Initial Seed Override Log
 INSERT INTO overrides (id, student_id, section_id, staff_id, override_type, reason, status, created_at) VALUES
 (1, 1, 5, 5, 'SPECIAL_PERMISSION', 'Academic advisor approved SE201 registration exception', 'APPROVED', '2026-08-15 09:30:00');

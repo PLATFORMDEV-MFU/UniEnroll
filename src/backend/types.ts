@@ -1,7 +1,39 @@
+export interface AiTextBinding {
+  run(
+    model: string,
+    input: { messages: Array<{ role: 'system' | 'user'; content: string }>; max_tokens?: number }
+  ): Promise<{ response?: string } | string>;
+}
+
 export type Bindings = {
   DB: D1Database;
   JWT_SECRET?: string;
+  AI?: AiTextBinding;
+  AI_EXPLANATIONS_ENABLED?: string;
+  AI_EXPLANATION_MODEL?: string;
+  PARTNER_WEBHOOK_URL?: string;
+  WEBHOOK_SIGNING_SECRET?: string;
+  PARTNER_API_KEY?: string;
+  INCOMING_WEBHOOK_SECRET?: string;
+  SEED_ENABLED?: string;
+  SEED_ACCOUNT_PASSWORD?: string;
 };
+
+export type RuleFailureCode =
+  | 'ERR_PREREQUISITE_NOT_MET'
+  | 'ERR_CREDIT_LIMIT_EXCEEDED'
+  | 'ERR_SCHEDULE_CONFLICT';
+
+export interface RuleFailure {
+  code: RuleFailureCode;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+export interface RuleDecisionResult {
+  eligible: boolean;
+  failed_rules: RuleFailure[];
+}
 
 export type AuthPayload = {
   sub: number;
@@ -100,8 +132,8 @@ export interface CreateEnrollmentDTO {
 }
 
 export interface UpdateEnrollmentDTO {
-  section_id?: number;
-  status?: 'ENROLLED' | 'DROPPED' | 'WITHDRAWN' | 'OVERRIDDEN';
+  section_id: number;
+  status?: never;
 }
 
 export interface CreateOverrideDTO {

@@ -1,14 +1,7 @@
 import { Hono } from 'hono';
-import { AppEnv, Section, Enrollment } from '../types';
+import { AppEnv } from '../types';
 
 export const partnerRoutes = new Hono<AppEnv>();
-
-export const VALID_PARTNER_KEYS = new Set([
-  'partner-secret-key-2026',
-  'team-04-timetable-key',
-  'team-05-attendance-key',
-  'team-02-bursar-key',
-]);
 
 // Partner API Key Authentication Middleware
 partnerRoutes.use('*', async (c, next) => {
@@ -19,7 +12,7 @@ partnerRoutes.use('*', async (c, next) => {
 
   const partnerId = c.req.header('X-Partner-Id') || 'external-partner-group';
 
-  if (!apiKey || !VALID_PARTNER_KEYS.has(apiKey)) {
+  if (!apiKey || !c.env.PARTNER_API_KEY || apiKey !== c.env.PARTNER_API_KEY) {
     // Record rejected attempt in logs
     try {
       await c.env.DB.prepare(
@@ -33,7 +26,7 @@ partnerRoutes.use('*', async (c, next) => {
       {
         success: false,
         error: 'Unauthorized: Invalid or missing X-Partner-Key header.',
-        hint: 'Please provide X-Partner-Key: partner-secret-key-2026',
+        hint: 'Provide the partner key assigned out-of-band in the X-Partner-Key header.',
       },
       401
     );

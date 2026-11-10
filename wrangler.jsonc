@@ -10,6 +10,13 @@
       "database_id": "569a8837-b07a-4205-b275-8263b2d0186c"
     }
   ],
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "AI_EXPLANATIONS_ENABLED": "true",
+    "AI_EXPLANATION_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8"
+  },
   "observability": {
     "enabled": true
   }

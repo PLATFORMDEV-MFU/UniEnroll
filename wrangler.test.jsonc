@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unienroll-backend-test",
+  "main": "src/backend/index.ts",
+  "compatibility_date": "2025-02-24",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "unienroll-test-d1",
+      "database_id": "local-test-database"
+    }
+  ]
+}
