@@ -367,6 +367,167 @@ git diff --cached --stat
 
 # 4. คำถามที่อาจารย์น่าจะถาม
 
+## Q: How do students log in? / นักศึกษา Login อย่างไร?
+
+### คำตอบสั้น 20 วินาที
+
+> “นักศึกษาใช้ Student ID และรหัสผ่านของ Student Identity Team 01 ครับ Browser ส่งข้อมูลผ่าน HTTPS มาที่ UniEnroll Worker จากนั้น Worker เรียก Team 01 `/auth/login` และใช้ token ชั่วคราวเรียก `/me` เพื่อตรวจว่าเจ้าของ token เป็น Student ID เดียวกัน เมื่อยืนยันสำเร็จ UniEnroll จะทิ้ง token ของ Team 01 แล้วออก JWT ของ UniEnroll เอง โดยไม่เก็บรหัสผ่านของนักศึกษา”
+
+### ถ้าอาจารย์ให้ขยายความ
+
+```text
+1. Student กรอก Student ID + password ที่หน้า UniEnroll
+2. Frontend → POST UniEnroll /api/auth/login ผ่าน HTTPS
+3. UniEnroll Worker → POST Team 01 /auth/login
+4. Team 01 → short-lived access token
+5. UniEnroll Worker → GET Team 01 /me ด้วย token ชั่วคราว
+6. ตรวจว่า /me.student_id ตรงกับ Student ID ที่กรอก
+7. ถ้ายังไม่มี local record → ทำ JIT Provisioning
+8. ทิ้ง Team 01 token → ออก UniEnroll JWT อายุ 24 ชั่วโมง
+9. Frontend ใช้ UniEnroll JWT เรียก API ลงทะเบียนครั้งต่อไป
+```
+
+**ประเด็นที่ต้องย้ำ:**
+
+- Team 01 เป็นผู้ตรวจรหัสผ่าน ไม่ใช่ UniEnroll
+- UniEnroll ไม่บันทึก password และไม่บันทึก Team 01 access token
+- `/me` ใช้ป้องกันการรับ token มาแล้วเชื่อทันทีโดยไม่ตรวจเจ้าของ
+- ถ้า Team 01 ปฏิเสธ, timeout, ล่ม หรือคืน schema ผิด ระบบไม่ออก UniEnroll JWT (`fail closed`)
+
+**เปิดโค้ดตามลำดับ:**
+
+1. `src/backend/routes/auth.ts:15-48` — รับ request, validate และเลือก Student Identity flow
+2. `src/backend/lib/student-identity-client.ts:130-204` — เรียก `/auth/login`, `/me`, timeout และตรวจ subject
+3. `src/backend/routes/auth.ts:60-72` — JIT Provisioning
+4. `src/backend/routes/auth.ts:89-113` — ออก UniEnroll JWT และ response
+
+## Q: How does the API connect? / API เชื่อมกันอย่างไร?
+
+### คำตอบสั้น 20 วินาที
+
+> “เราเชื่อมแบบ server-to-server REST API ผ่าน HTTPS ครับ Browser คุยกับ UniEnroll Worker เท่านั้น แล้ว Worker เป็นผู้เรียก Student Identity Team 01 ทำให้ service key ไม่ออกไปที่ browser การ Login ใช้ `/auth/login` กับ `/me` ส่วนการตรวจ Consent และความพร้อมลงทะเบียนใช้ `/students/{studentId}/claims`”
+
+### ภาพการเชื่อมต่อที่วาดตอบได้ทันที
+
+```text
+Student Browser
+  └─ HTTPS → Next.js Frontend
+       └─ HTTPS + UniEnroll JWT → UniEnroll Worker
+            ├─ D1: student, section, enrollment
+            └─ HTTPS server-to-server → Team 01 Student Identity
+                 ├─ POST /auth/login
+                 ├─ GET  /me
+                 └─ GET  /students/{studentId}/claims
+```
+
+### API แต่ละตัวทำหน้าที่อะไร
+
+| API | ผู้เรียก | Authentication | หน้าที่ |
+|---|---|---|---|
+| `POST UniEnroll /api/auth/login` | Frontend | Student ID + password ผ่าน HTTPS | เริ่ม federated login และรับ UniEnroll JWT |
+| `POST Team 01 /auth/login` | UniEnroll Worker | Student ID + password | ให้ Team 01 ตรวจ credential |
+| `GET Team 01 /me` | UniEnroll Worker | Team 01 token ชั่วคราว | ตรวจเจ้าของ token และรับ profile สำหรับ JIT |
+| `GET UniEnroll /api/external/student-identity/me` | Frontend | UniEnroll JWT | ขอผล identity/consent สำหรับเปิดหรือปิดปุ่ม Enroll |
+| `GET Team 01 /students/{id}/claims` | UniEnroll Worker | Service key ใน Wrangler Secret | อ่าน `verified`, `profileComplete`, `missingFields` ตาม Consent |
+| `POST UniEnroll /api/enrollments` | Frontend | UniEnroll JWT + `Idempotency-Key` | ตรวจ rules แล้วบันทึก enrollment ลง D1 |
+
+**ทำไมไม่ให้ Browser เรียก Team 01 claims โดยตรง?**
+
+> “เพราะ claims API ใช้ service credential ถ้าเรียกจาก browser key จะอยู่ใน JavaScript bundle หรือ Network tab เราจึงเก็บ key เป็น Cloudflare Worker Secret และให้ Worker เป็นตัวกลาง”
+
+## Q: Explain the code / ช่วยอธิบายโค้ดส่วน API
+
+### สคริปต์เปิดโค้ด 60–90 วินาที
+
+1. **เริ่มที่ `src/backend/index.ts:58-76`**
+   - `app.route('/api/auth', authRoutes)` ลงทะเบียน API Login
+   - `app.route('/api/enrollments', enrollmentRoutes)` ลงทะเบียน API จองวิชา
+   - `app.route('/api/external', externalRoutes)` ลงทะเบียน route ที่เชื่อม Team 01
+
+   **พูด:**
+
+   > “ไฟล์นี้เป็น entrypoint ของ Hono Worker ครับ หน้าที่คือประกอบ middleware และ mount route แต่ business logic แยกอยู่ในแต่ละ module”
+
+2. **เปิด `src/backend/routes/auth.ts:15-113`**
+   - ตรวจ JSON และ field ที่จำเป็น
+   - Student ID 10 หลักใช้ Team 01; Staff ใช้ local password hash
+   - เรียก `authenticateStudentIdentity(...)`
+   - ถ้าเป็นนักศึกษาใหม่สร้าง local record ด้วย prepared statement
+   - สุดท้ายเซ็น HS256 JWT ของ UniEnroll อายุ 24 ชั่วโมง
+
+   **พูด:**
+
+   > “Route นี้เป็น orchestration layer ครับ ไม่ได้ตรวจรหัสผ่านนักศึกษาเอง แต่ส่งให้ Team 01 client ตรวจ เมื่อสำเร็จจึง provision ผู้ใช้และออก session ของระบบเรา”
+
+3. **เปิด `src/backend/lib/student-identity-client.ts:130-204`**
+   - `fetch(.../auth/login)` ส่ง credential ผ่าน HTTPS
+   - ตรวจ HTTP status และ response schema
+   - `fetch(.../me)` พร้อม Bearer token ชั่วคราว
+   - เปรียบเทียบ `profile.studentId !== studentId`
+   - มี timeout 5 วินาทีและแปลง upstream error เป็น error code ของ UniEnroll
+
+   **พูด:**
+
+   > “ไฟล์ client แยก network contract ออกจาก route มี timeout, runtime validation และ subject check ถ้า partner ตอบผิดรูปแบบจะไม่ปล่อยให้ Login ผ่าน”
+
+4. **เปิด `src/backend/routes/external.ts:10-68`**
+   - `authMiddleware` ตรวจ UniEnroll JWT ก่อน
+   - อนุญาตเฉพาะ role `STUDENT`
+   - เรียก `fetchStudentIdentityClaims(...)`
+   - บันทึก partner request log โดยไม่บันทึก secret
+   - คำนวณ `can_enroll = verified && profileComplete`
+
+   **พูด:**
+
+   > “Login กับ Claims แยกหน้าที่กันครับ Login พิสูจน์ credential และเจ้าของบัญชี ส่วน Claims พิสูจน์ verified, profile completeness และ Consent ก่อนเปิดสิทธิ์ลงทะเบียน”
+
+5. **ถ้าถามว่าเชื่อม Database ตรงไหน** เปิด `src/backend/routes/enrollments.ts`
+   - ใช้ D1 prepared statements และ `.bind()`
+   - ตรวจ prerequisite, ตารางชน, credit limit, duplicate และ capacity
+   - บันทึก enrollment และ outbox หลังผ่านกฎ
+
+### ประโยคสรุปโค้ดหนึ่งประโยค
+
+> “เราแยกเป็น route สำหรับควบคุม flow, client สำหรับ contract กับ partner, middleware สำหรับ JWT/RBAC, rule engine สำหรับตัดสิน eligibility และ D1 สำหรับ persistence ทำให้แต่ละส่วนทดสอบและอธิบายแยกกันได้ครับ”
+
+## Q: API ส่งข้อมูลอะไร และตอบกลับอะไร?
+
+**Login request ที่ Browser ส่งเข้า UniEnroll:**
+
+```json
+{
+  "student_code": "[STUDENT_ID]",
+  "password": "[REDACTED]"
+}
+```
+
+**Login response ที่ Frontend ใช้:**
+
+```json
+{
+  "success": true,
+  "token": "[UNI_ENROLL_JWT_REDACTED]",
+  "user": {
+    "student_code": "[STUDENT_ID]",
+    "full_name": "[NAME]",
+    "role": "STUDENT"
+  }
+}
+```
+
+**Claims ที่ UniEnroll normalize ก่อนส่งให้ UI:**
+
+```json
+{
+  "verified": true,
+  "profile_complete": true,
+  "missing_fields": [],
+  "can_enroll": true
+}
+```
+
+> เวลาเปิด Network/API Logs ให้แสดงเฉพาะ method, path, status และ duration ห้ามเปิด password, JWT, service key หรือ Authorization header
+
 ## Q: รหัสผ่าน Team 01 ถูกเก็บใน UniEnroll หรือไม่?
 
 **A:** ไม่เก็บครับ Worker ส่งไป Team 01 ผ่าน HTTPS เพื่อ login ใช้ token ชั่วคราวเรียก `/me` ตรวจ Student ID แล้วทิ้ง token ก่อนออก UniEnroll JWT
