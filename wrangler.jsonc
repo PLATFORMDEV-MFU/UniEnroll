@@ -15,7 +15,8 @@
   },
   "vars": {
     "AI_EXPLANATIONS_ENABLED": "true",
-    "AI_EXPLANATION_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8"
+    "AI_EXPLANATION_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8",
+    "STUDENT_IDENTITY_BASE_URL": "https://student-identity.onrender.com"
   },
   "observability": {
     "enabled": true

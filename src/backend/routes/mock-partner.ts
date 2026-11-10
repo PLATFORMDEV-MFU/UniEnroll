@@ -49,7 +49,7 @@ mockPartnerRoutes.get('/webhook/received', (c) => {
 
 // 3. GET /api/mock-partner/eligibility (Simulates Partner Tuition / Clearance API)
 mockPartnerRoutes.get('/eligibility', (c) => {
-  const studentCode = c.req.query('student_code') || '65010042';
+  const studentCode = c.req.query('student_code') || '6731503119';
   const simulateBreakage = c.req.query('simulate_breakage') === 'true';
 
   // Box 6: If simulate_breakage is requested, return 503 Service Unavailable

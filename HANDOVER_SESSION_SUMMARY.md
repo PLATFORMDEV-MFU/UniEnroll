@@ -33,11 +33,15 @@
 | | `POST /overrides` | ✅ **เสร็จแล้ว** | สิทธิ์เฉพาะ `ROLE_STAFF`, ขยาย `max_capacity` อัตโนมัติถ้าที่นั่งเต็ม, บันทึกลงตาราง `overrides` |
 | | `GET /overrides` | ✅ **เสร็จแล้ว** | ดึงประวัติ Audit Trail ของการ Override ทั้งหมด |
 | **Integrations** | Consume Identity Claims | ✅ **เสร็จแล้ว** | JWT Authentication (HS256) แยก Role `STUDENT` และ `STAFF` ชัดเจน |
-| | Course Catalog Rules | ✅ **เสร็จแล้ว** | เช็คเงื่อนไขวันเวลาชนกัน, วิชาเดียวกันซ้ำเซกชัน, ตรวจสอบหน่วยกิต |
-| | Publish Webhook (`enrollment.changed`) | ✅ **เสร็จแล้ว** | `webhook-sender.ts` ยิง Event `created`, `swapped`, `dropped`, `withdrawn`, `overridden` พร้อม HMAC-SHA256 Signature |
-| | Idempotency Protection | ✅ **เสร็จแล้ว** | Middleware ตรวจสอบ `Idempotency-Key` ป้องกันการกดเบิ้ล (Double Submission) |
-| **AI & Quality** | AI explains decision in plain language | 🟡 **Rule Fallback** | ปัจจุบันใช้ **Deterministic Rule Engine** แจ้งเตือนภาษาคนที่ชัดเจน (ตาม `PRD_Enrollment_Final.md` ที่เน้น Zero-Cost $0) ยังไม่ได้ต่อ LLM API ภายนอก |
-| | Minimum 7 Tests | ✅ **เสร็จแล้ว (7/7)** | ใน `test_api.mjs` และ `test_a5_integration.mjs`: มี Add, Drop, Full Section, Prerequisite/Duplicate, Idempotency, Override Authority (403), และ Webhook Retry |
+| | Course Catalog Rules | ✅ **เสร็จแล้ว** | ตรวจ prerequisite จากประวัติการเรียน, เวลาเรียนชน, วิชาซ้ำ และเพดาน 22 หน่วยกิตด้วย deterministic rule engine |
+| | Publish Webhook (`enrollment.changed`) | 🟡 **รอ URL กลุ่มปลายทาง** | ฝั่ง publisher มี transactional outbox รองรับ `created`, `swapped`, `dropped`, `withdrawn`, `overridden`, HMAC-SHA256, retry 3 ครั้ง, `event_id` คงเดิม และ staff retry endpoint; ต้องตั้ง `PARTNER_WEBHOOK_URL` และ secret เมื่ออาจารย์แจ้งคู่เชื่อม |
+| | Idempotency Protection | ✅ **เสร็จแล้ว** | Key ถูก scope ตามผู้ใช้ + method + path + request hash; คำขอพร้อมกันใช้ผล canonical เดียวกัน และ body คนละชุดจะได้ 409 |
+| **AI & Quality** | AI explains decision in plain language | ✅ **เสร็จแล้ว** | ใช้ Workers AI อธิบาย failed rules เท่านั้น โดย eligibility มาจาก deterministic engine; timeout/error จะ fallback เป็นข้อความกฎทันที |
+| | Minimum 7 Tests | ✅ **Automated Tests** | `pnpm test` รันใน Workers runtime + D1 แยกสำหรับทดสอบ ครอบคลุม requirement ขั้นต่ำ, 49/50 + 2 คำขอพร้อมกัน และ 60 คนแย่ง 50 ที่ |
+
+> สถานะล่าสุดใน working tree: local Workers/D1 suite ผ่าน 38 tests รวม race ของ
+> same-course duplicate, idempotency, drop, withdraw, swap และ status transition
+> แต่ source ชุดล่าสุดนี้ยังไม่ได้ deploy; ต้อง migrate/verify remote D1 ก่อน deploy.
 
 ---
 
@@ -93,7 +97,7 @@
 
 | บทบาท (Role) | รหัสนักศึกษา / Username | รหัสผ่าน (Password) | รายละเอียด |
 | :--- | :--- | :--- | :--- |
-| **STUDENT** | `65010042` | `65010042` | Somchai Prasert (SE) — ทดสอบลงทะเบียน, ถอนวิชาติด W, สลับกลุ่ม |
+| **STUDENT** | `6731503119` | `<SEED_ACCOUNT_PASSWORD>` | Waritpon Kokong (SE) — ทดสอบลงทะเบียน, ถอนวิชาติด W, สลับกลุ่ม |
 | **STUDENT** | `65010088` | `65010088` | Wipada Srisuk (CS) |
 | **STUDENT** | `66010123` | `66010123` | Thanawat Jaiyen (IT) |
 | **STAFF** | `staff01` | `staff01` | Dr. Apinya Somboon — เจ้าหน้าที่สำนักทะเบียน (เข้าแท็บ Staff Console ได้) |
@@ -113,10 +117,11 @@
    ```bash
    pnpm run dev
    ```
-   เข้าเว็บที่ `http://localhost:3000` แล้วทดสอบล็อกอินด้วย `65010042` และ `staff01`
-3. **สิ่งที่อาจทำเพิ่มเติม (ถ้าต้องการความสมบูรณ์แบบระดับ 100%):**
-   * **AI Plain Language Explanation:** ถ้าอาจารย์ถามเรื่อง AI ตามข้อความย่อใน PRD สามารถเพิ่มฟังก์ชันเรียก LLM (เช่น Gemini API) เพื่อแปลง Error Code เช่น `ERR_CAPACITY_FULL` ให้กลายเป็นประโยคภาษาพูดธรรมชาติ หรือเตรียมคำตอบว่า "เราเลือกใช้ Deterministic Explanation Engine ตามเอกสารไฟนอลเพื่อคุมค่าใช้จ่ายเป็น Zero-Cost $0 และลด Latency ครับ"
-   * **Frontend Deployment:** หากต้องการให้อาจารย์กดเข้าเว็บผ่านลิงก์ออนไลน์โดยตรง สามารถเชื่อมต่อ GitHub Repository กับ **Vercel** หรือ **Cloudflare Pages** แล้วตั้งค่า Environment Variable:
+   เข้าเว็บที่ `http://localhost:3000` แล้วทดสอบล็อกอินด้วย `6731503119` และ `staff01`
+3. **ก่อนทดสอบเชื่อมกับกลุ่มอื่น:**
+   * ตั้ง `PARTNER_WEBHOOK_URL` หลังอาจารย์แจ้ง endpoint และตั้ง `WEBHOOK_SIGNING_SECRET` ผ่าน `wrangler secret put` โดยห้าม commit secret
+   * ให้กลุ่มปลายทาง deduplicate ด้วย `event_id` ตาม `docs/openapi.yaml`
+4. **Frontend Deployment:** หากต้องการให้อาจารย์กดเข้าเว็บผ่านลิงก์ออนไลน์โดยตรง สามารถเชื่อมต่อ GitHub Repositoryกับ **Vercel** หรือ **Cloudflare Pages** แล้วตั้งค่า Environment Variable:
      `NEXT_PUBLIC_API_URL=https://unienroll-backend.team03-enrollment.workers.dev`
 
 ---

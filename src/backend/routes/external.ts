@@ -1,9 +1,72 @@
 import { Hono } from 'hono';
 import { AppEnv } from '../types';
+import { authMiddleware } from '../middleware/auth';
+import { fetchStudentIdentityClaims } from '../lib/student-identity-client';
 
 export const externalRoutes = new Hono<AppEnv>();
 
 export const DEFAULT_PARTNER_API_BASE = 'https://partner-bursar.university.ac.th/api';
+
+externalRoutes.get('/student-identity/me', authMiddleware, async (c) => {
+  const user = c.get('user');
+
+  if (user.role !== 'STUDENT') {
+    return c.json({
+      success: false,
+      error: 'Student Identity verification is available only for student accounts',
+      error_code: 'ERR_STUDENT_IDENTITY_STUDENT_ONLY',
+    }, 403);
+  }
+
+  if (!/^\d{10}$/.test(user.student_code)) {
+    return c.json({
+      success: false,
+      error: 'Student ID must contain exactly 10 digits before identity verification',
+      error_code: 'ERR_STUDENT_ID_FORMAT',
+    }, 400);
+  }
+
+  const result = await fetchStudentIdentityClaims(c.env, user.student_code);
+
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO partner_request_logs (partner_id, endpoint, method, status_code) VALUES (?, ?, ?, ?)'
+    ).bind(
+      'team01-student-identity',
+      `/students/${user.student_code}/claims`,
+      'GET',
+      result.status,
+    ).run();
+  } catch {}
+
+  if (result.ok === false) {
+    const publicStatus = result.status === 503 ? 503 : 502;
+    return c.json({
+      success: false,
+      error: result.message,
+      error_code: result.code,
+      partner_status: result.status,
+      duration_ms: result.durationMs,
+    }, publicStatus);
+  }
+
+  const canEnroll = result.claims.verified && result.claims.profileComplete;
+  return c.json({
+    success: true,
+    data: {
+      provider: 'Student Identity Team 01',
+      student_id: user.student_code,
+      verified: result.claims.verified,
+      name: result.claims.name,
+      profile_complete: result.claims.profileComplete,
+      missing_fields: result.claims.missingFields,
+      skills: result.claims.skills,
+      can_enroll: canEnroll,
+      checked_at: new Date().toISOString(),
+      duration_ms: result.durationMs,
+    },
+  });
+});
 
 /**
  * Consumer Route (A5 Box 1: Consumer Proof & A5 Box 6: Degradation Proof)
@@ -11,7 +74,7 @@ export const DEFAULT_PARTNER_API_BASE = 'https://partner-bursar.university.ac.th
  * Implements Circuit Breaker / Graceful Fallback if partner is down.
  */
 externalRoutes.get('/check-eligibility', async (c) => {
-  const studentCode = c.req.query('student_code') || '65010042';
+  const studentCode = c.req.query('student_code') || '6731503119';
   const simulateBreakage = c.req.query('simulate_breakage') === 'true';
   const customPartnerUrl = c.req.query('partner_url');
 

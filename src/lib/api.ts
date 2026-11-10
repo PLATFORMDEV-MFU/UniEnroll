@@ -1,4 +1,4 @@
-import { Course, Section, Student, Enrollment, Override, ApiLog, AuthUser, LoginResponse } from '../types';
+import { Course, Section, Student, Enrollment, Override, ApiLog, AuthUser, LoginResponse, StudentIdentityStatus } from '../types';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'https://unienroll-backend.team03-enrollment.workers.dev';
@@ -155,6 +155,10 @@ export const api = {
 
   async getMe() {
     return request<AuthUser>('/api/auth/me');
+  },
+
+  async getStudentIdentityStatus() {
+    return request<StudentIdentityStatus>('/api/external/student-identity/me');
   },
 
   // Resources

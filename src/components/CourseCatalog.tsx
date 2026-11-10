@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Section, Student, Enrollment } from '../types';
-import { Search, Clock, MapPin, Users, Check, AlertTriangle, BookOpen } from 'lucide-react';
+import { Section, Student, Enrollment, StudentIdentityStatus } from '../types';
+import { Search, Clock, MapPin, Users, Check, AlertTriangle, BookOpen, RefreshCw, ShieldCheck } from 'lucide-react';
 
 interface CourseCatalogProps {
   sections: Section[];
@@ -10,6 +10,11 @@ interface CourseCatalogProps {
   myEnrollments: Enrollment[];
   onEnroll: (section: Section) => Promise<void>;
   isEnrollingId: number | null;
+  identityStatus: StudentIdentityStatus | null;
+  identityLoading: boolean;
+  identityError: string | null;
+  identityRequired: boolean;
+  onRefreshIdentity: () => Promise<void>;
 }
 
 export const CourseCatalog: React.FC<CourseCatalogProps> = ({
@@ -18,6 +23,11 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
   myEnrollments,
   onEnroll,
   isEnrollingId,
+  identityStatus,
+  identityLoading,
+  identityError,
+  identityRequired,
+  onRefreshIdentity,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
@@ -61,6 +71,50 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
         )}
       </div>
 
+      {identityRequired && (
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border px-5 py-4 shadow-sm ${
+          identityStatus?.can_enroll
+            ? 'bg-emerald-50 border-emerald-200'
+            : identityError
+            ? 'bg-rose-50 border-rose-200'
+            : 'bg-amber-50 border-amber-200'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+              identityStatus?.can_enroll ? 'bg-emerald-100 text-emerald-700' : 'bg-white/70 text-slate-600'
+            }`}>
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900">Student Identity • Team 01</p>
+              <p className="text-xs text-slate-600 mt-0.5">
+                {identityLoading
+                  ? 'Checking your identity and profile consent...'
+                  : identityStatus?.can_enroll
+                  ? `Verified as ${identityStatus.name}. Profile is complete and ready for enrollment.`
+                  : identityStatus
+                  ? `Identity check incomplete${identityStatus.missing_fields.length > 0 ? `: ${identityStatus.missing_fields.join(', ')}` : '.'}`
+                  : identityError || 'Identity verification is required before enrollment.'}
+              </p>
+              {identityStatus && (
+                <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                  Student ID {identityStatus.student_id} • {identityStatus.duration_ms} ms
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRefreshIdentity}
+            disabled={identityLoading}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${identityLoading ? 'animate-spin' : ''}`} />
+            {identityLoading ? 'Checking...' : 'Check Again'}
+          </button>
+        </div>
+      )}
+
       {/* Search & Filter Controls */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
         <div className="relative flex-1">
@@ -100,6 +154,7 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
             );
             const isFull = sec.enrolled_count >= sec.max_capacity;
             const occupancyPercent = Math.min(100, Math.round((sec.enrolled_count / sec.max_capacity) * 100));
+            const identityBlocked = identityRequired && !identityStatus?.can_enroll;
 
             return (
               <div
@@ -191,10 +246,12 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
                   {/* Action Button */}
                   <button
                     onClick={() => onEnroll(sec)}
-                    disabled={isEnrollingId === sec.id || isEnrolled}
+                    disabled={isEnrollingId === sec.id || isEnrolled || identityBlocked}
                     className={`w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm ${
                       isEnrolled
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                        : identityBlocked
+                        ? 'bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed'
                         : isFull
                         ? 'bg-slate-100 hover:bg-slate-200 text-rose-700 border border-rose-200'
                         : 'bg-slate-900 hover:bg-slate-800 text-white'
@@ -209,6 +266,11 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Registered</span>
+                      </>
+                    ) : identityBlocked ? (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Verify Identity to Register</span>
                       </>
                     ) : isFull ? (
                       <>

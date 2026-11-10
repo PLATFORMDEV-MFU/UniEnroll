@@ -17,6 +17,8 @@ export type Bindings = {
   INCOMING_WEBHOOK_SECRET?: string;
   SEED_ENABLED?: string;
   SEED_ACCOUNT_PASSWORD?: string;
+  STUDENT_IDENTITY_BASE_URL?: string;
+  STUDENT_IDENTITY_API_KEY?: string;
 };
 
 export type RuleFailureCode =

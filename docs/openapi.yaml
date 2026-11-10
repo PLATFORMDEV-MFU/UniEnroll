@@ -16,6 +16,59 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /external/student-identity/me:
+    get:
+      summary: Verify the authenticated student with Student Identity Team 01
+      description: |
+        Uses the authenticated UniEnroll student's 10-digit student code to request consented
+        claims from Student Identity. Enrollment is enabled in the web application only when
+        both verified and profile_complete are true. The partner service key remains server-side.
+      operationId: verifyMyStudentIdentity
+      responses:
+        '200':
+          description: Student Identity claims were retrieved and normalized
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    required: [provider, student_id, verified, name, profile_complete, missing_fields, skills, can_enroll, checked_at, duration_ms]
+                    properties:
+                      provider: { type: string, const: Student Identity Team 01 }
+                      student_id: { type: string, pattern: '^\d{10}$', example: '6731503119' }
+                      verified: { type: boolean }
+                      name: { type: string }
+                      profile_complete: { type: boolean }
+                      missing_fields:
+                        type: array
+                        items: { type: string }
+                      skills:
+                        type: array
+                        items: { type: string }
+                      can_enroll: { type: boolean }
+                      checked_at: { type: string, format: date-time }
+                      duration_ms: { type: integer, minimum: 0 }
+        '400':
+          description: The local account does not use a 10-digit student ID
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '502':
+          description: Student Identity rejected the request, was unavailable, or returned an invalid response
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: Student Identity service key is not configured
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /enrollments/me:
     get:
       summary: List the authenticated student's active and historical enrollments

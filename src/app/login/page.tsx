@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth-context';
 import { GraduationCap, Lock, User, Loader2, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 
 const DEMO_STUDENTS = [
-  { code: '65010042', name: 'Somchai Prasert', major: 'SE', role: 'STUDENT' },
+  { code: '6731503119', name: 'Waritpon Kokong', major: 'SE', role: 'STUDENT' },
   { code: '65010088', name: 'Wipada Srisuk', major: 'CS', role: 'STUDENT' },
   { code: '66010123', name: 'Thanawat Jaiyen', major: 'IT', role: 'STUDENT' },
   { code: 'staff01', name: 'Dr. Apinya (Staff)', major: 'Registrar', role: 'STAFF' },
@@ -16,8 +16,8 @@ export default function LoginPage() {
   const { login, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
-  const [studentCode, setStudentCode] = useState('65010042');
-  const [password, setPassword] = useState('65010042');
+  const [studentCode, setStudentCode] = useState('6731503119');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
 
   const handleSelectDemoUser = (code: string) => {
     setStudentCode(code);
-    setPassword(code);
+    setPassword('');
     setErrorMessage(null);
   };
 
@@ -102,7 +102,7 @@ export default function LoginPage() {
                   required
                   value={studentCode}
                   onChange={(e) => setStudentCode(e.target.value)}
-                  placeholder="e.g. 65010042"
+                  placeholder="e.g. 6731503119"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition-colors font-mono"
                 />
               </div>
@@ -124,7 +124,9 @@ export default function LoginPage() {
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                Demo password is the same as your Student ID.
+                {/^\d{10}$/.test(studentCode.trim())
+                  ? 'Use the password from your Team 01 Student Identity account.'
+                  : 'Use the configured UniEnroll demo account password.'}
               </p>
             </div>
 

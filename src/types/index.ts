@@ -42,6 +42,19 @@ export interface AuthUser {
   role: 'STUDENT' | 'STAFF';
 }
 
+export interface StudentIdentityStatus {
+  provider: string;
+  student_id: string;
+  verified: boolean;
+  name: string;
+  profile_complete: boolean;
+  missing_fields: string[];
+  skills: string[];
+  can_enroll: boolean;
+  checked_at: string;
+  duration_ms: number;
+}
+
 export interface LoginRequest {
   student_code: string;
   password: string;

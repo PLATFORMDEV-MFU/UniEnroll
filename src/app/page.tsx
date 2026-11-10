@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Section, Student, Enrollment, ApiLog } from '../types';
+import { Section, Student, Enrollment, ApiLog, StudentIdentityStatus } from '../types';
 import { api, subscribeApiLogs } from '../lib/api';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
@@ -28,6 +28,9 @@ export default function Home() {
   const [isSwapping, setIsSwapping] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [apiOnline, setApiOnline] = useState(true);
+  const [identityStatus, setIdentityStatus] = useState<StudentIdentityStatus | null>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
 
   const [logs, setLogs] = useState<ApiLog[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -123,6 +126,27 @@ export default function Home() {
     }
   }, []);
 
+  const fetchIdentityStatus = useCallback(async () => {
+    if (!user || user.role !== 'STUDENT') {
+      setIdentityStatus(null);
+      setIdentityError(null);
+      return;
+    }
+
+    setIdentityLoading(true);
+    setIdentityError(null);
+    const res = await api.getStudentIdentityStatus();
+    setIdentityLoading(false);
+
+    if (res.success && res.data) {
+      setIdentityStatus(res.data);
+      return;
+    }
+
+    setIdentityStatus(null);
+    setIdentityError(res.error || 'Could not verify identity with Student Identity Team 01.');
+  }, [user]);
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
@@ -133,8 +157,9 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       fetchStudentEnrollments(user.id);
+      fetchIdentityStatus();
     }
-  }, [user, fetchStudentEnrollments]);
+  }, [user, fetchStudentEnrollments, fetchIdentityStatus]);
 
   // Refresh sections list to update seats count
   const refreshSections = async () => {
@@ -147,6 +172,16 @@ export default function Home() {
     if (!user) {
       addToast('error', 'Authentication Required', 'Please sign in to register for classes.');
       router.push('/login');
+      return;
+    }
+
+    if (user.role === 'STUDENT' && !identityStatus?.can_enroll) {
+      addToast(
+        'error',
+        'Identity Verification Required',
+        identityError || 'Verify your Student Identity profile before registering for a section.',
+        'ERR_STUDENT_IDENTITY_REQUIRED'
+      );
       return;
     }
 
@@ -289,6 +324,11 @@ export default function Home() {
             myEnrollments={myEnrollments}
             onEnroll={handleEnroll}
             isEnrollingId={isEnrollingId}
+            identityStatus={identityStatus}
+            identityLoading={identityLoading}
+            identityError={identityError}
+            identityRequired={user?.role === 'STUDENT'}
+            onRefreshIdentity={fetchIdentityStatus}
           />
         )}
 

@@ -6,7 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth';
 export const seedRoutes = new Hono<AppEnv>();
 
 const seedUsers = [
-  { id: 1, code: '65010042', name: 'Somchai Prasert', email: 's65010042@university.ac.th', major: 'Software Engineering', role: 'STUDENT' },
+  { id: 1, code: '6731503119', name: 'Waritpon Kokong', email: 's6731503119@university.ac.th', major: 'Software Engineering', role: 'STUDENT' },
   { id: 2, code: '65010088', name: 'Wipada Srisuk', email: 's65010088@university.ac.th', major: 'Computer Science', role: 'STUDENT' },
   { id: 3, code: '66010123', name: 'Thanawat Jaiyen', email: 's66010123@university.ac.th', major: 'Information Technology', role: 'STUDENT' },
   { id: 4, code: '66010199', name: 'Nattaporn Meedee', email: 's66010199@university.ac.th', major: 'Computer Science', role: 'STUDENT' },

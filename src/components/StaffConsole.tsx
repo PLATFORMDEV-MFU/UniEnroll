@@ -42,7 +42,7 @@ export const StaffConsole: React.FC<StaffConsoleProps> = ({
   const [loadingOverrides, setLoadingOverrides] = useState(true);
 
   // Grant Override form state
-  const [targetStudentCode, setTargetStudentCode] = useState('65010042');
+  const [targetStudentCode, setTargetStudentCode] = useState('6731503119');
   const [targetSectionId, setTargetSectionId] = useState<number | ''>('');
   const [overrideType, setOverrideType] = useState<'CAPACITY' | 'PREREQUISITE' | 'LATE_ADD' | 'SPECIAL_PERMISSION'>('CAPACITY');
   const [overrideReason, setOverrideReason] = useState('Dean authorized section capacity exception');
@@ -225,11 +225,11 @@ export const StaffConsole: React.FC<StaffConsoleProps> = ({
                 required
                 value={targetStudentCode}
                 onChange={(e) => setTargetStudentCode(e.target.value)}
-                placeholder="e.g. 65010042"
+                placeholder="e.g. 6731503119"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-400 focus:bg-white"
               />
               <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                {['65010042', '65010088', '66010123', '66010199'].map((c) => (
+                {['6731503119', '65010088', '66010123', '66010199'].map((c) => (
                   <button
                     key={c}
                     type="button"

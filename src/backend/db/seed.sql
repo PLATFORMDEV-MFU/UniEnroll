@@ -38,7 +38,7 @@ INSERT INTO sections (id, course_id, section_number, semester, schedule, room, m
 
 -- 3. Insert Students & Staff
 INSERT INTO students (id, student_code, full_name, email, major, password_hash, role) VALUES
-(1, '65010042', 'Somchai Prasert', 's65010042@university.ac.th', 'Software Engineering', 'c2FsdF82NTAxMDA0Mg==:c0f73f328db40e796e6d1c9ef0d4d7d11ab3c13e4b0c7974e6c46a6f6ee08fdb', 'STUDENT'),
+(1, '6731503119', 'Waritpon Kokong', 's6731503119@university.ac.th', 'Software Engineering', 'c2FsdF82NTAxMDA0Mg==:c0f73f328db40e796e6d1c9ef0d4d7d11ab3c13e4b0c7974e6c46a6f6ee08fdb', 'STUDENT'),
 (2, '65010088', 'Wipada Srisuk', 's65010088@university.ac.th', 'Computer Science', 'c2FsdF82NTAxMDA4OA==:a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0', 'STUDENT'),
 (3, '66010123', 'Thanawat Jaiyen', 's66010123@university.ac.th', 'Information Technology', 'c2FsdF82NjAxMDEyMw==:b2c3d4e5f6a17890123456789abcdef0123456789abcdef0123456789abcdef0', 'STUDENT'),
 (4, '66010199', 'Nattaporn Meedee', 's66010199@university.ac.th', 'Computer Science', 'c2FsdF82NjAxMDE5OQ==:c3d4e5f6a1b27890123456789abcdef0123456789abcdef0123456789abcdef0', 'STUDENT'),

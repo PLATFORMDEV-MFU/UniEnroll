@@ -4,6 +4,16 @@
  */
 
 const BASE_URL = 'https://unienroll-backend.team03-enrollment.workers.dev';
+const PARTNER_API_KEY = process.env.PARTNER_API_KEY;
+const INCOMING_WEBHOOK_SECRET = process.env.INCOMING_WEBHOOK_SECRET;
+const TEST_STUDENT_CODE = process.env.TEST_STUDENT_CODE;
+const TEST_STUDENT_PASSWORD = process.env.TEST_STUDENT_PASSWORD;
+const TEST_STAFF_CODE = process.env.TEST_STAFF_CODE;
+const TEST_STAFF_PASSWORD = process.env.TEST_STAFF_PASSWORD;
+
+if (!PARTNER_API_KEY || !INCOMING_WEBHOOK_SECRET || !TEST_STUDENT_CODE || !TEST_STUDENT_PASSWORD || !TEST_STAFF_CODE || !TEST_STAFF_PASSWORD) {
+  throw new Error('Partner, webhook, test-student, and test-staff credentials must be provided through environment variables.');
+}
 
 async function runA5EvidenceSuite() {
   console.log('=====================================================');
@@ -11,16 +21,26 @@ async function runA5EvidenceSuite() {
   console.log('Endpoint:', BASE_URL);
   console.log('=====================================================\n');
 
-  // Step 0: Get JWT Token for Somchai (65010042)
-  console.log('>>> [Step 0] Authenticating Somchai (65010042) to obtain Bearer Token...');
+  // Step 0: Get a JWT for the explicitly configured test student.
+  console.log('>>> [Step 0] Authenticating configured test student to obtain Bearer Token...');
   const loginRes = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ student_code: '65010042', password: '65010042' }),
+    body: JSON.stringify({ student_code: TEST_STUDENT_CODE, password: TEST_STUDENT_PASSWORD }),
   }).then((r) => r.json());
 
   const token = loginRes.token;
   console.log('Auth Status:', loginRes.success ? 'SUCCESS' : 'FAILED');
+
+  const staffLoginRes = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ student_code: TEST_STAFF_CODE, password: TEST_STAFF_PASSWORD }),
+  }).then((r) => r.json());
+  const staffToken = staffLoginRes.token;
+  if (!token || !staffToken) {
+    throw new Error('Student or staff authentication failed; refusing to run live mutations.');
+  }
 
   // Ensure Somchai has no active enrollment in Section 4 or 5 to test clean creation
   const myEnrollments = await fetch(`${BASE_URL}/api/enrollments`, {
@@ -42,7 +62,7 @@ async function runA5EvidenceSuite() {
   console.log('\n-----------------------------------------------------');
   console.log('BOX 1: CONSUMER PROOF (UniEnroll Consuming Partner API)');
   console.log('-----------------------------------------------------');
-  const b1Res = await fetch(`${BASE_URL}/api/external/check-eligibility?student_code=65010042`).then((r) => r.json());
+  const b1Res = await fetch(`${BASE_URL}/api/external/check-eligibility?student_code=6731503119`).then((r) => r.json());
   console.log('Consumer Proof Result:', JSON.stringify(b1Res, null, 2));
 
   // ----------------------------------------------------------------------------------
@@ -53,7 +73,7 @@ async function runA5EvidenceSuite() {
   console.log('-----------------------------------------------------');
   const b2Res = await fetch(`${BASE_URL}/api/partner/sections`, {
     headers: {
-      'X-Partner-Key': 'partner-secret-key-2026',
+      'X-Partner-Key': PARTNER_API_KEY,
       'X-Partner-Id': 'team-04-timetable-and-scheduling',
     },
   }).then((r) => r.json());
@@ -67,7 +87,7 @@ async function runA5EvidenceSuite() {
   // Verify Partner Audit Log in D1
   const b2LogRes = await fetch(`${BASE_URL}/api/partner/logs`, {
     headers: {
-      'X-Partner-Key': 'partner-secret-key-2026',
+      'X-Partner-Key': PARTNER_API_KEY,
     },
   }).then((r) => r.json());
   console.log('Internal Partner Request Logs in D1 (Latest 2 entries):', JSON.stringify(b2LogRes.data?.slice(0, 2), null, 2));
@@ -80,7 +100,7 @@ async function runA5EvidenceSuite() {
   console.log('-----------------------------------------------------');
   const b3Payload = {
     event: 'tuition.cleared',
-    student_code: '65010042',
+    student_code: '6731503119',
     term: '2026/1',
     amount_paid: 18000,
     receipt_no: 'RCP-2026-88412',
@@ -91,7 +111,7 @@ async function runA5EvidenceSuite() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Webhook-Secret': 'whsec_partner_secret_2026',
+      'X-Webhook-Secret': INCOMING_WEBHOOK_SECRET,
     },
     body: JSON.stringify(b3Payload),
   }).then((r) => r.json());
@@ -114,7 +134,9 @@ async function runA5EvidenceSuite() {
   console.log('Trigger Action (Enroll in Section 4):', { success: b4Enroll.success, message: b4Enroll.message });
 
   // Read UniEnroll Outgoing Audit Log from D1
-  const outgoingWhLog = await fetch(`${BASE_URL}/api/webhooks/logs?direction=OUTGOING`).then((r) => r.json());
+  const outgoingWhLog = await fetch(`${BASE_URL}/api/webhooks/logs?direction=OUTGOING`, {
+    headers: { 'Authorization': `Bearer ${staffToken}` },
+  }).then((r) => r.json());
   console.log('UniEnroll Outgoing Webhook DB Audit Log:', JSON.stringify(outgoingWhLog.data?.[0], null, 2));
 
   // ----------------------------------------------------------------------------------
@@ -162,7 +184,7 @@ async function runA5EvidenceSuite() {
   console.log('\n-----------------------------------------------------');
   console.log('BOX 6: DEGRADATION PROOF (Simulated Partner Breakage & Fallback JSON)');
   console.log('-----------------------------------------------------');
-  const b6Res = await fetch(`${BASE_URL}/api/external/check-eligibility?student_code=65010042&simulate_breakage=true`).then((r) => r.json());
+  const b6Res = await fetch(`${BASE_URL}/api/external/check-eligibility?student_code=${encodeURIComponent(TEST_STUDENT_CODE)}&simulate_breakage=true`).then((r) => r.json());
   console.log('Degradation Proof Output:', JSON.stringify(b6Res, null, 2));
 
   console.log('\n=====================================================');

@@ -34,7 +34,10 @@ app.get('/', (c) => {
     status: 'online',
     version: '1.2.0',
     a5_integration_hub: {
-      box_1_consumer: 'GET /api/external/check-eligibility?student_code=...',
+      box_1_consumer: {
+        student_identity: 'GET /api/external/student-identity/me (Requires UniEnroll JWT)',
+        legacy_eligibility: 'GET /api/external/check-eligibility?student_code=...'
+      },
       box_2_provider: {
         sections: 'GET /api/partner/sections (Requires header: X-Partner-Key)',
         enrollments: 'GET /api/partner/enrollments (Requires header: X-Partner-Key)',
